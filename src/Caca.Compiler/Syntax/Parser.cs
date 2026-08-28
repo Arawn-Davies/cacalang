@@ -87,6 +87,8 @@ public sealed class Parser
         return block;
     }
 
+    private static bool Contains(TokenKind[] kinds, TokenKind kind) => Array.IndexOf(kinds, kind) >= 0;
+
     /// <summary>
     /// Parses statements until <paramref name="terminator"/> or end of file.
     /// </summary>
@@ -94,12 +96,12 @@ public sealed class Parser
     /// Semicolons separate statements; a trailing one is allowed but no longer
     /// required, so a program may end with <c>print x</c>.
     /// </remarks>
-    private BlockStatement ParseStatements(TokenKind terminator)
+    private BlockStatement ParseStatements(params TokenKind[] terminators)
     {
         var start = Current.Location;
         var statements = new List<Statement>();
 
-        while (Current.Kind != terminator && Current.Kind != TokenKind.EndOfFile)
+        while (!Contains(terminators, Current.Kind) && Current.Kind != TokenKind.EndOfFile)
         {
             var before = _position;
             statements.Add(ParseStatement());
@@ -127,6 +129,10 @@ public sealed class Parser
         TokenKind.ReadIntKeyword => ParseRead(CacaType.Int),
         TokenKind.ReadStringKeyword => ParseRead(CacaType.String),
         TokenKind.ForKeyword => ParseFor(),
+        TokenKind.IfKeyword => ParseIf(consumeEnd: true),
+        TokenKind.WhileKeyword => ParseWhile(),
+        TokenKind.BreakKeyword => ParseBreak(),
+        TokenKind.ContinueKeyword => ParseContinue(),
         TokenKind.Identifier => ParseAssignment(),
         _ => ParseUnexpectedStatement(),
     };
@@ -146,7 +152,8 @@ public sealed class Parser
     /// <summary>Discards tokens up to the next statement boundary after an error.</summary>
     private void SkipToStatementBoundary()
     {
-        while (Current.Kind is not (TokenKind.Semicolon or TokenKind.EndKeyword or TokenKind.EndOfFile))
+        while (Current.Kind is not (TokenKind.Semicolon or TokenKind.EndKeyword
+            or TokenKind.ElseKeyword or TokenKind.EndOfFile))
         {
             Advance();
         }
@@ -197,6 +204,51 @@ public sealed class Parser
         return new ForStatement(name.Text, from, to, body, keyword.Location.To(end.Location));
     }
 
+    /// <summary>
+    /// Parses <c>if c then A else B end</c>.
+    /// </summary>
+    /// <param name="consumeEnd">
+    /// False when this <c>if</c> is the <c>else if</c> of an enclosing one, in
+    /// which case the enclosing <c>if</c> owns the single closing <c>end</c>.
+    /// </param>
+    private Statement ParseIf(bool consumeEnd)
+    {
+        var keyword = Advance();
+        var condition = ParseExpression();
+        Expect(TokenKind.ThenKeyword, "after the condition");
+        var thenBranch = ParseStatements(TokenKind.ElseKeyword, TokenKind.EndKeyword);
+
+        Statement? elseBranch = null;
+
+        if (Match(TokenKind.ElseKeyword))
+        {
+            // `else if` chains without stacking up an `end` for each link.
+            elseBranch = Current.Kind == TokenKind.IfKeyword
+                ? ParseIf(consumeEnd: false)
+                : ParseStatements(TokenKind.EndKeyword);
+        }
+
+        var end = consumeEnd
+            ? Expect(TokenKind.EndKeyword, "to close the 'if'")
+            : Current;
+
+        return new IfStatement(condition, thenBranch, elseBranch, keyword.Location.To(end.Location));
+    }
+
+    private Statement ParseWhile()
+    {
+        var keyword = Advance();
+        var condition = ParseExpression();
+        Expect(TokenKind.DoKeyword, "after the condition");
+        var body = ParseStatements(TokenKind.EndKeyword);
+        var end = Expect(TokenKind.EndKeyword, "to close the loop body");
+        return new WhileStatement(condition, body, keyword.Location.To(end.Location));
+    }
+
+    private Statement ParseBreak() => new BreakStatement(Advance().Location);
+
+    private Statement ParseContinue() => new ContinueStatement(Advance().Location);
+
     // Expression grammar, lowest precedence first:
     //   <expr>       := <additive>
     //   <additive>   := <multiplicative> (('+' | '-') <multiplicative>)*
@@ -207,8 +259,13 @@ public sealed class Parser
 
     private static int PrecedenceOf(TokenKind kind) => kind switch
     {
-        TokenKind.Star or TokenKind.Slash => 2,
-        TokenKind.Plus or TokenKind.Minus => 1,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 6,
+        TokenKind.Plus or TokenKind.Minus => 5,
+        TokenKind.Less or TokenKind.LessOrEquals
+            or TokenKind.Greater or TokenKind.GreaterOrEquals => 4,
+        TokenKind.EqualsEquals or TokenKind.BangEquals => 3,
+        TokenKind.AmpersandAmpersand => 2,
+        TokenKind.PipePipe => 1,
         _ => 0,
     };
 
@@ -218,6 +275,15 @@ public sealed class Parser
         TokenKind.Minus => BinaryOperator.Subtract,
         TokenKind.Star => BinaryOperator.Multiply,
         TokenKind.Slash => BinaryOperator.Divide,
+        TokenKind.Percent => BinaryOperator.Modulo,
+        TokenKind.EqualsEquals => BinaryOperator.Equal,
+        TokenKind.BangEquals => BinaryOperator.NotEqual,
+        TokenKind.Less => BinaryOperator.Less,
+        TokenKind.LessOrEquals => BinaryOperator.LessOrEqual,
+        TokenKind.Greater => BinaryOperator.Greater,
+        TokenKind.GreaterOrEquals => BinaryOperator.GreaterOrEqual,
+        TokenKind.AmpersandAmpersand => BinaryOperator.LogicalAnd,
+        TokenKind.PipePipe => BinaryOperator.LogicalOr,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "not a binary operator"),
     };
 
@@ -244,11 +310,17 @@ public sealed class Parser
 
     private Expression ParseUnary()
     {
-        if (Current.Kind is TokenKind.Minus or TokenKind.Plus)
+        if (Current.Kind is TokenKind.Minus or TokenKind.Plus or TokenKind.Bang)
         {
             var op = Advance();
             var operand = ParseUnary();
-            var kind = op.Kind == TokenKind.Minus ? UnaryOperator.Negate : UnaryOperator.Identity;
+            var kind = op.Kind switch
+            {
+                TokenKind.Minus => UnaryOperator.Negate,
+                TokenKind.Bang => UnaryOperator.Not,
+                _ => UnaryOperator.Identity,
+            };
+
             return new UnaryExpression(kind, operand, op.Location.To(operand.Location));
         }
 
@@ -268,6 +340,12 @@ public sealed class Parser
             case TokenKind.StringLiteral:
                 Advance();
                 return new LiteralExpression(token.StringValue, CacaType.String, token.Location);
+
+            case TokenKind.TrueKeyword:
+            case TokenKind.FalseKeyword:
+                Advance();
+                return new LiteralExpression(
+                    token.Kind == TokenKind.TrueKeyword, CacaType.Bool, token.Location);
 
             case TokenKind.Identifier:
                 Advance();

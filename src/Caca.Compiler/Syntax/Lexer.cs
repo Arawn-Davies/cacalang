@@ -24,6 +24,14 @@ public sealed class Lexer
         ["print"] = TokenKind.PrintKeyword,
         ["read_int"] = TokenKind.ReadIntKeyword,
         ["read_string"] = TokenKind.ReadStringKeyword,
+        ["if"] = TokenKind.IfKeyword,
+        ["then"] = TokenKind.ThenKeyword,
+        ["else"] = TokenKind.ElseKeyword,
+        ["while"] = TokenKind.WhileKeyword,
+        ["break"] = TokenKind.BreakKeyword,
+        ["continue"] = TokenKind.ContinueKeyword,
+        ["true"] = TokenKind.TrueKeyword,
+        ["false"] = TokenKind.FalseKeyword,
     };
 
     private readonly string _text;
@@ -104,35 +112,75 @@ public sealed class Lexer
                 return LexStringLiteral(start, line, column);
             }
 
-            var kind = ch switch
-            {
-                '+' => TokenKind.Plus,
-                '-' => TokenKind.Minus,
-                '*' => TokenKind.Star,
-                '/' => TokenKind.Slash,
-                '=' => TokenKind.Equals,
-                ';' => TokenKind.Semicolon,
-                '(' => TokenKind.OpenParen,
-                ')' => TokenKind.CloseParen,
-                _ => (TokenKind?)null,
-            };
+            var kind = LexOperator(ch, start, line, column);
 
             if (kind is null)
             {
-                _diagnostics.Report(
-                    DiagnosticCode.UnexpectedCharacter,
-                    new SourceLocation(start, 1, line, column),
-                    $"unexpected character '{ch}' in source");
-
-                // Consume it and keep going, so one stray character does not
-                // hide every later error in the file.
+                // Consume the offending character and keep going, so one stray
+                // character does not hide every later error in the file.
                 _position++;
                 continue;
             }
 
-            _position++;
             return Make(kind.Value, start, line, column);
         }
+    }
+
+    /// <summary>
+    /// Lexes an operator or piece of punctuation, preferring the longest match
+    /// so that <c>==</c> is not read as two <c>=</c> tokens.
+    /// </summary>
+    /// <returns><see langword="null"/> if the character starts no operator.</returns>
+    private TokenKind? LexOperator(char ch, int start, int line, int column)
+    {
+        switch (ch)
+        {
+            case '+': _position++; return TokenKind.Plus;
+            case '-': _position++; return TokenKind.Minus;
+            case '*': _position++; return TokenKind.Star;
+            case '/': _position++; return TokenKind.Slash;
+            case '%': _position++; return TokenKind.Percent;
+            case ';': _position++; return TokenKind.Semicolon;
+            case '(': _position++; return TokenKind.OpenParen;
+            case ')': _position++; return TokenKind.CloseParen;
+
+            case '=': return TakeIfFollowedByEquals(TokenKind.EqualsEquals, TokenKind.Equals);
+            case '!': return TakeIfFollowedByEquals(TokenKind.BangEquals, TokenKind.Bang);
+            case '<': return TakeIfFollowedByEquals(TokenKind.LessOrEquals, TokenKind.Less);
+            case '>': return TakeIfFollowedByEquals(TokenKind.GreaterOrEquals, TokenKind.Greater);
+
+            case '&' when Lookahead == '&': _position += 2; return TokenKind.AmpersandAmpersand;
+            case '|' when Lookahead == '|': _position += 2; return TokenKind.PipePipe;
+
+            case '&':
+            case '|':
+                // A lone '&' or '|' is nearly always a typo for the pair.
+                _diagnostics.Report(
+                    DiagnosticCode.UnexpectedCharacter,
+                    new SourceLocation(start, 1, line, column),
+                    $"unexpected character '{ch}' in source; did you mean '{ch}{ch}'?");
+                return null;
+
+            default:
+                _diagnostics.Report(
+                    DiagnosticCode.UnexpectedCharacter,
+                    new SourceLocation(start, 1, line, column),
+                    $"unexpected character '{ch}' in source");
+                return null;
+        }
+    }
+
+    /// <summary>Consumes one or two characters depending on a trailing <c>=</c>.</summary>
+    private TokenKind TakeIfFollowedByEquals(TokenKind withEquals, TokenKind without)
+    {
+        if (Lookahead == '=')
+        {
+            _position += 2;
+            return withEquals;
+        }
+
+        _position++;
+        return without;
     }
 
     /// <summary>Skips whitespace, <c>// line</c> comments and <c>/* block */</c> comments.</summary>

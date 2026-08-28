@@ -124,6 +124,93 @@ public class EmitterTests : IDisposable
         Assert.Equal(TestHost.Lines("43"), Emit("var x = 0; read_int x; print x + 1;", "42\n"));
     }
 
+    [Theory]
+    [InlineData("1 < 2", "true")]
+    [InlineData("2 <= 2", "true")]
+    [InlineData("3 > 4", "false")]
+    [InlineData("3 >= 3", "true")]
+    [InlineData("2 == 2", "true")]
+    [InlineData("2 != 2", "false")]
+    [InlineData(@"""a"" == ""a""", "true")]
+    [InlineData(@"""a"" != ""b""", "true")]
+    [InlineData("!true", "false")]
+    [InlineData("true && false", "false")]
+    [InlineData("false || true", "true")]
+    [InlineData("7 % 3", "1")]
+    public void Emitted_comparisons_and_logic_evaluate(string expression, string expected)
+    {
+        Assert.Equal(TestHost.Lines(expected), Emit($"print {expression};"));
+    }
+
+    [Fact]
+    public void Emitted_logical_operators_short_circuit()
+    {
+        // If the right operand were evaluated the emitted code would divide by
+        // zero and the runtime would raise DivideByZeroException.
+        Assert.Equal(TestHost.Lines("false"), Emit("var z = 0; print z != 0 && 10 / z > 1;"));
+    }
+
+    [Fact]
+    public void Emitted_if_else_selects_a_branch()
+    {
+        Assert.Equal(TestHost.Lines("no"), Emit("""if 1 > 2 then print "yes"; else print "no"; end;"""));
+    }
+
+    [Fact]
+    public void Emitted_else_if_chain_selects_the_right_arm()
+    {
+        const string source = """
+            var n = 0;
+            read_int n;
+            if n < 0 then print "negative";
+            else if n == 0 then print "zero";
+            else print "positive"; end;
+            """;
+
+        Assert.Equal(TestHost.Lines("zero"), Emit(source, "0\n"));
+    }
+
+    [Fact]
+    public void Emitted_while_loop_runs()
+    {
+        Assert.Equal(TestHost.Lines("3", "2", "1"), Emit("""
+            var n = 3;
+            while n > 0 do print n; n = n - 1; end;
+            """));
+    }
+
+    [Fact]
+    public void Emitted_break_and_continue_work_in_both_loop_forms()
+    {
+        Assert.Equal(TestHost.Lines("1", "3"), Emit("""
+            for i = 1 to 10 do
+                if i > 3 then break; end;
+                if i % 2 == 0 then continue; end;
+                print i;
+            end;
+            """));
+
+        Assert.Equal(TestHost.Lines("1", "3"), Emit("""
+            var i = 0;
+            while true do
+                i = i + 1;
+                if i > 3 then break; end;
+                if i % 2 == 0 then continue; end;
+                print i;
+            end;
+            """));
+    }
+
+    [Fact]
+    public void Emitted_booleans_print_the_same_way_the_interpreter_prints_them()
+    {
+        // Console.WriteLine(bool) would print "True"; the language prints "true".
+        Assert.Equal(TestHost.Lines("true", "ready: false"), Emit("""
+            print 1 < 2;
+            print "ready: " + (1 > 2);
+            """));
+    }
+
     /// <summary>
     /// The two backends must agree; this is the cheapest way to keep them from
     /// drifting apart as the language grows.
@@ -134,6 +221,9 @@ public class EmitterTests : IDisposable
     [InlineData("""var n = 0; read_int n; for i = 1 to n do print "tick " + i; end;""", "3\n")]
     [InlineData("""var s = ""; read_string s; print s + "!";""", "hi\n")]
     [InlineData("print (1 + 2) * (3 - 4) / 1;", "")]
+    [InlineData("var n = 0; read_int n; if n % 2 == 0 then print \"even\"; else print \"odd\"; end;", "6\n")]
+    [InlineData("var i = 1; while i <= 5 do if i == 3 then i = i + 1; continue; end; print i * i; i = i + 1; end;", "")]
+    [InlineData("for i = 1 to 20 do if i > 4 then break; end; print i >= 2 && i <= 3; end;", "")]
     public void Both_backends_produce_the_same_output(string source, string input)
     {
         Assert.Equal(TestHost.Run(source, input), Emit(source, input));

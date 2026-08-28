@@ -71,9 +71,11 @@ The full specification, including the semantics of each construct, is in
 
 | | |
 |---|---|
-| Types | `int` (32-bit signed) and `string` |
-| Statements | `var`, assignment, `for … to … do … end`, `read_int`, `read_string`, `print` |
-| Operators | `+ - * /` with the usual precedence, left associative; unary `-`; parentheses |
+| Types | `int` (32-bit signed), `string`, `bool` |
+| Statements | `var`, assignment, `if … then … else … end`, `for … to … do … end`, `while … do … end`, `break`, `continue`, `read_int`, `read_string`, `print` |
+| Arithmetic | `+ - * / %` with the usual precedence, left associative; unary `-` |
+| Comparison | `< <= > >= == !=`; `==` compares strings by content |
+| Logic | `&& \|\| !`, short-circuiting; conditions must be `bool`, with no integer truthiness |
 | Strings | `+` concatenates; `\n \r \t \0 \\ \"` escapes |
 | Comments | `// line` and `/* block */` |
 

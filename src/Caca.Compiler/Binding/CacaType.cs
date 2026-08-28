@@ -7,6 +7,7 @@ public enum CacaType
     Error,
     Int,
     String,
+    Bool,
 }
 
 public static class CacaTypeExtensions
@@ -15,6 +16,7 @@ public static class CacaTypeExtensions
     {
         CacaType.Int => "int",
         CacaType.String => "string",
+        CacaType.Bool => "bool",
         _ => "<error>",
     };
 
@@ -22,6 +24,7 @@ public static class CacaTypeExtensions
     {
         CacaType.Int => typeof(int),
         CacaType.String => typeof(string),
+        CacaType.Bool => typeof(bool),
         _ => throw new InvalidOperationException("the error type has no CLR representation"),
     };
 }

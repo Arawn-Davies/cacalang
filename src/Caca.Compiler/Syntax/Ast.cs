@@ -83,6 +83,36 @@ public sealed class ForStatement(
     public bool DeclaresVariable { get; internal set; }
 }
 
+/// <summary><c>if &lt;expr&gt; then &lt;stmts&gt; (else &lt;stmts&gt;)? end</c></summary>
+public sealed class IfStatement(
+    Expression condition,
+    Statement thenBranch,
+    Statement? elseBranch,
+    SourceLocation location) : Statement(location)
+{
+    public Expression Condition { get; } = condition;
+
+    public Statement ThenBranch { get; } = thenBranch;
+
+    /// <summary>The <c>else</c> branch, or <see langword="null"/> if there is none.</summary>
+    public Statement? ElseBranch { get; } = elseBranch;
+}
+
+/// <summary><c>while &lt;expr&gt; do &lt;stmts&gt; end</c></summary>
+public sealed class WhileStatement(Expression condition, Statement body, SourceLocation location)
+    : Statement(location)
+{
+    public Expression Condition { get; } = condition;
+
+    public Statement Body { get; } = body;
+}
+
+/// <summary><c>break</c> — leaves the innermost enclosing loop.</summary>
+public sealed class BreakStatement(SourceLocation location) : Statement(location);
+
+/// <summary><c>continue</c> — starts the next iteration of the innermost enclosing loop.</summary>
+public sealed class ContinueStatement(SourceLocation location) : Statement(location);
+
 // --------------------------------------------------------------- expressions
 
 public abstract class Expression(SourceLocation location) : SyntaxNode(location)
@@ -118,6 +148,8 @@ public sealed class LiteralExpression(object value, CacaType type, SourceLocatio
     public int IntValue => (int)Value;
 
     public string StringValue => (string)Value;
+
+    public bool BoolValue => (bool)Value;
 }
 
 /// <summary>A reference to a variable.</summary>
@@ -159,6 +191,7 @@ public enum UnaryOperator
 {
     Identity,
     Negate,
+    Not,
 }
 
 public enum BinaryOperator
@@ -167,6 +200,15 @@ public enum BinaryOperator
     Subtract,
     Multiply,
     Divide,
+    Modulo,
+    Equal,
+    NotEqual,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+    LogicalAnd,
+    LogicalOr,
 }
 
 public static class OperatorExtensions
@@ -177,6 +219,15 @@ public static class OperatorExtensions
         BinaryOperator.Subtract => "-",
         BinaryOperator.Multiply => "*",
         BinaryOperator.Divide => "/",
+        BinaryOperator.Modulo => "%",
+        BinaryOperator.Equal => "==",
+        BinaryOperator.NotEqual => "!=",
+        BinaryOperator.Less => "<",
+        BinaryOperator.LessOrEqual => "<=",
+        BinaryOperator.Greater => ">",
+        BinaryOperator.GreaterOrEqual => ">=",
+        BinaryOperator.LogicalAnd => "&&",
+        BinaryOperator.LogicalOr => "||",
         _ => op.ToString(),
     };
 
@@ -184,6 +235,7 @@ public static class OperatorExtensions
     {
         UnaryOperator.Identity => "+",
         UnaryOperator.Negate => "-",
+        UnaryOperator.Not => "!",
         _ => op.ToString(),
     };
 }

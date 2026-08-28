@@ -18,6 +18,7 @@ public sealed class TypeChecker
 {
     private readonly DiagnosticBag _diagnostics;
     private readonly Dictionary<string, CacaType> _symbols = new(StringComparer.Ordinal);
+    private int _loopDepth;
 
     private TypeChecker(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
 
@@ -58,6 +59,32 @@ public sealed class TypeChecker
 
             case ForStatement loop:
                 CheckFor(loop);
+                break;
+
+            case IfStatement conditional:
+                RequireBool(conditional.Condition, "the condition of an 'if'");
+                CheckStatement(conditional.ThenBranch);
+
+                if (conditional.ElseBranch is not null)
+                {
+                    CheckStatement(conditional.ElseBranch);
+                }
+
+                break;
+
+            case WhileStatement loop:
+                RequireBool(loop.Condition, "the condition of a 'while'");
+                _loopDepth++;
+                CheckStatement(loop.Body);
+                _loopDepth--;
+                break;
+
+            case BreakStatement:
+                RequireInsideLoop(statement, "break");
+                break;
+
+            case ContinueStatement:
+                RequireInsideLoop(statement, "continue");
                 break;
 
             default:
@@ -144,7 +171,33 @@ public sealed class TypeChecker
             loop.DeclaresVariable = true;
         }
 
+        _loopDepth++;
         CheckStatement(loop.Body);
+        _loopDepth--;
+    }
+
+    private void RequireInsideLoop(Statement statement, string keyword)
+    {
+        if (_loopDepth == 0)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.NotInsideALoop,
+                statement.Location,
+                $"'{keyword}' can only appear inside a 'for' or 'while' loop");
+        }
+    }
+
+    private void RequireBool(Expression expression, string role)
+    {
+        var type = CheckExpression(expression);
+
+        if (type is not (CacaType.Bool or CacaType.Error))
+        {
+            _diagnostics.Report(
+                DiagnosticCode.TypeMismatch,
+                expression.Location,
+                $"{role} must be of type bool, but this is {type.Describe()}");
+        }
     }
 
     private void RequireInt(Expression expression, string role, DiagnosticCode code)
@@ -196,10 +249,11 @@ public sealed class TypeChecker
     private CacaType CheckUnary(UnaryExpression unary)
     {
         var operandType = CheckExpression(unary.Operand);
+        var expected = unary.Operator == UnaryOperator.Not ? CacaType.Bool : CacaType.Int;
 
-        if (operandType is CacaType.Int or CacaType.Error)
+        if (operandType == CacaType.Error || operandType == expected)
         {
-            return operandType;
+            return expected;
         }
 
         _diagnostics.Report(
@@ -220,17 +274,11 @@ public sealed class TypeChecker
             return CacaType.Error;
         }
 
-        if (left == CacaType.Int && right == CacaType.Int)
-        {
-            return CacaType.Int;
-        }
+        var result = ResultOf(binary.Operator, left, right);
 
-        // '+' doubles as string concatenation, and concatenating a string with
-        // an int converts the int. Every other combination is an error rather
-        // than, as before, unverifiable IL.
-        if (binary.Operator == BinaryOperator.Add && (left == CacaType.String || right == CacaType.String))
+        if (result is not null)
         {
-            return CacaType.String;
+            return result.Value;
         }
 
         _diagnostics.Report(
@@ -241,4 +289,34 @@ public sealed class TypeChecker
 
         return CacaType.Error;
     }
+
+    /// <summary>
+    /// The type an operator produces for a pair of operand types, or
+    /// <see langword="null"/> if it does not accept them.
+    /// </summary>
+    private static CacaType? ResultOf(BinaryOperator op, CacaType left, CacaType right) => op switch
+    {
+        // '+' doubles as string concatenation, and concatenating a string with
+        // another type converts that operand. Every other arithmetic operator
+        // is defined on ints alone, rather than, as before, silently emitting
+        // unverifiable IL.
+        BinaryOperator.Add when left == CacaType.String || right == CacaType.String => CacaType.String,
+
+        BinaryOperator.Add or BinaryOperator.Subtract or BinaryOperator.Multiply
+            or BinaryOperator.Divide or BinaryOperator.Modulo =>
+            left == CacaType.Int && right == CacaType.Int ? CacaType.Int : null,
+
+        // Ordering compares ints; equality compares any two values of one type.
+        BinaryOperator.Less or BinaryOperator.LessOrEqual
+            or BinaryOperator.Greater or BinaryOperator.GreaterOrEqual =>
+            left == CacaType.Int && right == CacaType.Int ? CacaType.Bool : null,
+
+        BinaryOperator.Equal or BinaryOperator.NotEqual =>
+            left == right ? CacaType.Bool : null,
+
+        BinaryOperator.LogicalAnd or BinaryOperator.LogicalOr =>
+            left == CacaType.Bool && right == CacaType.Bool ? CacaType.Bool : null,
+
+        _ => null,
+    };
 }

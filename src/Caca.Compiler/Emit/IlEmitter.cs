@@ -37,6 +37,9 @@ public sealed class IlEmitter
     private static readonly MethodInfo ConsoleReadLine =
         typeof(Console).GetMethod(nameof(Console.ReadLine), Type.EmptyTypes)!;
 
+    private static readonly MethodInfo StringEquals =
+        typeof(string).GetMethod(nameof(string.Equals), [typeof(string), typeof(string)])!;
+
     private static readonly MethodInfo StringConcat =
         typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)])!;
 
@@ -50,6 +53,13 @@ public sealed class IlEmitter
         typeof(CultureInfo).GetProperty(nameof(CultureInfo.InvariantCulture))!.GetGetMethod()!;
 
     private readonly Dictionary<string, LocalBuilder> _locals = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The <c>break</c> and <c>continue</c> targets of the enclosing loops,
+    /// innermost last.
+    /// </summary>
+    private readonly Stack<(Label Break, Label Continue)> _loops = new();
+
     private readonly ILGenerator _il;
 
     private IlEmitter(ILGenerator il) => _il = il;
@@ -182,6 +192,22 @@ public sealed class IlEmitter
                 EmitFor(loop);
                 break;
 
+            case IfStatement conditional:
+                EmitIf(conditional);
+                break;
+
+            case WhileStatement loop:
+                EmitWhile(loop);
+                break;
+
+            case BreakStatement:
+                _il.Emit(OpCodes.Br, _loops.Peek().Break);
+                break;
+
+            case ContinueStatement:
+                _il.Emit(OpCodes.Br, _loops.Peek().Continue);
+                break;
+
             default:
                 throw new ArgumentOutOfRangeException(
                     nameof(statement), statement, $"unhandled statement {statement.GetType().Name}");
@@ -190,6 +216,13 @@ public sealed class IlEmitter
 
     private void EmitPrint(PrintStatement print)
     {
+        if (print.Expression.Type == CacaType.Bool)
+        {
+            EmitAsString(print.Expression);
+            _il.Emit(OpCodes.Call, ConsoleWriteLineString);
+            return;
+        }
+
         EmitExpression(print.Expression);
 
         // Call the overload matching the value's type instead of boxing every
@@ -212,6 +245,48 @@ public sealed class IlEmitter
         }
 
         Store(read.Name);
+    }
+
+    private void EmitIf(IfStatement conditional)
+    {
+        var otherwise = _il.DefineLabel();
+        var exit = _il.DefineLabel();
+
+        EmitExpression(conditional.Condition);
+        _il.Emit(OpCodes.Brfalse, otherwise);
+        EmitStatement(conditional.ThenBranch);
+
+        if (conditional.ElseBranch is null)
+        {
+            _il.MarkLabel(otherwise);
+            return;
+        }
+
+        _il.Emit(OpCodes.Br, exit);
+        _il.MarkLabel(otherwise);
+        EmitStatement(conditional.ElseBranch);
+        _il.MarkLabel(exit);
+    }
+
+    private void EmitWhile(WhileStatement loop)
+    {
+        var body = _il.DefineLabel();
+        var test = _il.DefineLabel();
+        var exit = _il.DefineLabel();
+
+        // The condition is emitted after the body and jumped to first, so each
+        // iteration costs one branch rather than two.
+        _il.Emit(OpCodes.Br, test);
+        _il.MarkLabel(body);
+
+        _loops.Push((Break: exit, Continue: test));
+        EmitStatement(loop.Body);
+        _loops.Pop();
+
+        _il.MarkLabel(test);
+        EmitExpression(loop.Condition);
+        _il.Emit(OpCodes.Brtrue, body);
+        _il.MarkLabel(exit);
     }
 
     private void EmitFor(ForStatement loop)
@@ -238,7 +313,13 @@ public sealed class IlEmitter
         _il.Emit(OpCodes.Bgt, exit);
 
         _il.MarkLabel(body);
+
+        // `continue` resumes at the bound test that precedes the increment.
+        var next = _il.DefineLabel();
+        _loops.Push((Break: exit, Continue: next));
         EmitStatement(loop.Body);
+        _loops.Pop();
+        _il.MarkLabel(next);
 
         // `to` is inclusive, so the bound is tested before the increment. The
         // original emitted a `blt` after incrementing, which ran the body one
@@ -264,6 +345,10 @@ public sealed class IlEmitter
                 _il.Emit(OpCodes.Ldc_I4, literal.IntValue);
                 break;
 
+            case LiteralExpression literal when literal.LiteralType == CacaType.Bool:
+                _il.Emit(literal.BoolValue ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                break;
+
             case LiteralExpression literal:
                 _il.Emit(OpCodes.Ldstr, literal.StringValue);
                 break;
@@ -279,9 +364,17 @@ public sealed class IlEmitter
             case UnaryExpression unary:
                 EmitExpression(unary.Operand);
 
-                if (unary.Operator == UnaryOperator.Negate)
+                switch (unary.Operator)
                 {
-                    _il.Emit(OpCodes.Neg);
+                    case UnaryOperator.Negate:
+                        _il.Emit(OpCodes.Neg);
+                        break;
+
+                    case UnaryOperator.Not:
+                        // There is no `not` for booleans; compare against false.
+                        _il.Emit(OpCodes.Ldc_I4_0);
+                        _il.Emit(OpCodes.Ceq);
+                        break;
                 }
 
                 break;
@@ -302,44 +395,141 @@ public sealed class IlEmitter
         // expression's expected type down to both operands, so `print x + 1`
         // converted the operands to string and then emitted an integer `add`
         // over them, producing IL the runtime rejects.
-        if (binary.Type == CacaType.String)
+        switch (binary.Operator)
         {
-            EmitAsString(binary.Left);
-            EmitAsString(binary.Right);
-            _il.Emit(OpCodes.Call, StringConcat);
-            return;
+            case BinaryOperator.LogicalAnd:
+            case BinaryOperator.LogicalOr:
+                EmitShortCircuit(binary);
+                return;
+
+            case BinaryOperator.Add when binary.Type == CacaType.String:
+                EmitAsString(binary.Left);
+                EmitAsString(binary.Right);
+                _il.Emit(OpCodes.Call, StringConcat);
+                return;
         }
 
         EmitExpression(binary.Left);
         EmitExpression(binary.Right);
 
-        _il.Emit(binary.Operator switch
+        switch (binary.Operator)
         {
-            BinaryOperator.Add => OpCodes.Add,
-            BinaryOperator.Subtract => OpCodes.Sub,
-            BinaryOperator.Multiply => OpCodes.Mul,
-            BinaryOperator.Divide => OpCodes.Div,
-            _ => throw new ArgumentOutOfRangeException(nameof(binary), binary.Operator, "unhandled binary operator"),
-        });
+            case BinaryOperator.Add:
+                _il.Emit(OpCodes.Add);
+                return;
+            case BinaryOperator.Subtract:
+                _il.Emit(OpCodes.Sub);
+                return;
+            case BinaryOperator.Multiply:
+                _il.Emit(OpCodes.Mul);
+                return;
+            case BinaryOperator.Divide:
+                _il.Emit(OpCodes.Div);
+                return;
+            case BinaryOperator.Modulo:
+                _il.Emit(OpCodes.Rem);
+                return;
+
+            case BinaryOperator.Equal:
+                EmitEquality(binary);
+                return;
+            case BinaryOperator.NotEqual:
+                EmitEquality(binary);
+                EmitNegate();
+                return;
+
+            // The CLR has clt and cgt but no cle or cge, so the inclusive forms
+            // are the strict opposite, negated.
+            case BinaryOperator.Less:
+                _il.Emit(OpCodes.Clt);
+                return;
+            case BinaryOperator.Greater:
+                _il.Emit(OpCodes.Cgt);
+                return;
+            case BinaryOperator.LessOrEqual:
+                _il.Emit(OpCodes.Cgt);
+                EmitNegate();
+                return;
+            case BinaryOperator.GreaterOrEqual:
+                _il.Emit(OpCodes.Clt);
+                EmitNegate();
+                return;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(binary), binary.Operator, "unhandled binary operator");
+        }
     }
 
-    /// <summary>Emits an expression, converting an int result to its string form.</summary>
+    /// <summary>Compares the two values already on the stack.</summary>
+    private void EmitEquality(BinaryExpression binary)
+    {
+        // Reference equality is not what `==` means for strings.
+        if (binary.Left.Type == CacaType.String)
+        {
+            _il.Emit(OpCodes.Call, StringEquals);
+            return;
+        }
+
+        _il.Emit(OpCodes.Ceq);
+    }
+
+    /// <summary>Turns the boolean on the stack into its opposite.</summary>
+    private void EmitNegate()
+    {
+        _il.Emit(OpCodes.Ldc_I4_0);
+        _il.Emit(OpCodes.Ceq);
+    }
+
+    /// <summary>
+    /// Emits <c>&amp;&amp;</c> or <c>||</c>, evaluating the right operand only
+    /// when the left one has not already decided the result.
+    /// </summary>
+    private void EmitShortCircuit(BinaryExpression binary)
+    {
+        var shortCircuit = _il.DefineLabel();
+        var exit = _il.DefineLabel();
+        var isAnd = binary.Operator == BinaryOperator.LogicalAnd;
+
+        EmitExpression(binary.Left);
+        _il.Emit(isAnd ? OpCodes.Brfalse : OpCodes.Brtrue, shortCircuit);
+
+        EmitExpression(binary.Right);
+        _il.Emit(OpCodes.Br, exit);
+
+        _il.MarkLabel(shortCircuit);
+        _il.Emit(isAnd ? OpCodes.Ldc_I4_0 : OpCodes.Ldc_I4_1);
+        _il.MarkLabel(exit);
+    }
+
+    /// <summary>Emits an expression, converting a non-string result to its text form.</summary>
     private void EmitAsString(Expression expression)
     {
         EmitExpression(expression);
 
-        if (expression.Type != CacaType.Int)
+        switch (expression.Type)
         {
-            return;
-        }
+            case CacaType.Int:
+                // int.ToString needs a managed reference to the value, so spill
+                // it to a temporary first.
+                var temporary = _il.DeclareLocal(typeof(int));
+                _il.Emit(OpCodes.Stloc, temporary);
+                _il.Emit(OpCodes.Ldloca, temporary);
+                _il.Emit(OpCodes.Call, InvariantCultureGetter);
+                _il.Emit(OpCodes.Call, IntToStringInvariant);
+                break;
 
-        // int.ToString needs a managed reference to the value, so spill it to a
-        // temporary first.
-        var temporary = _il.DeclareLocal(typeof(int));
-        _il.Emit(OpCodes.Stloc, temporary);
-        _il.Emit(OpCodes.Ldloca, temporary);
-        _il.Emit(OpCodes.Call, InvariantCultureGetter);
-        _il.Emit(OpCodes.Call, IntToStringInvariant);
+            case CacaType.Bool:
+                // bool.ToString yields "True"; the language prints "true".
+                var whenTrue = _il.DefineLabel();
+                var done = _il.DefineLabel();
+                _il.Emit(OpCodes.Brtrue, whenTrue);
+                _il.Emit(OpCodes.Ldstr, "false");
+                _il.Emit(OpCodes.Br, done);
+                _il.MarkLabel(whenTrue);
+                _il.Emit(OpCodes.Ldstr, "true");
+                _il.MarkLabel(done);
+                break;
+        }
     }
 
     private void Declare(string name, CacaType type) =>

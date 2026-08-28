@@ -22,4 +22,5 @@ public enum DiagnosticCode
     OperatorNotDefined = 10,
     LoopBoundMustBeInt = 11,
     LoopVariableMustBeInt = 12,
+    NotInsideALoop = 13,
 }

@@ -1,0 +1,16 @@
+// The traditional demonstration that a language can, in fact, make a decision.
+var n = 0;
+print "How high should I count?";
+read_int n;
+
+for i = 1 to n do
+    if i % 15 == 0 then
+        print "FizzBuzz";
+    else if i % 3 == 0 then
+        print "Fizz";
+    else if i % 5 == 0 then
+        print "Buzz";
+    else
+        print i;
+    end;
+end;
