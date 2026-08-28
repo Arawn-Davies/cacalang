@@ -1,3 +1,4 @@
+using Caca.Diagnostics;
 using Caca.Syntax;
 
 namespace Caca.Binding;
@@ -11,7 +12,8 @@ public sealed class FunctionSymbol(
     string name,
     IReadOnlyList<(string Name, CacaType Type)> parameters,
     CacaType returnType,
-    FunctionDeclaration declaration)
+    FunctionDeclaration declaration,
+    SourceLocation nameLocation) : ISymbol
 {
     public string Name { get; } = name;
 
@@ -21,6 +23,14 @@ public sealed class FunctionSymbol(
     public CacaType ReturnType { get; } = returnType;
 
     public FunctionDeclaration Declaration { get; } = declaration;
+
+    /// <summary>The extent of the function's name, for go-to-definition.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
+
+    SourceLocation ISymbol.Declaration => NameLocation;
+
+    /// <summary>A one-line description, as shown on hover.</summary>
+    public string Describe() => $"func {this}";
 
     /// <summary>The signature as it would be written in source, for error messages.</summary>
     public override string ToString()

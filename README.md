@@ -47,6 +47,7 @@ dotnet helloworld.dll
 ### Command line
 
 ```
+caca repl                            Start an interactive prompt
 caca run <file.caca>                 Run a program with the interpreter
 caca build <file.caca> [-o <path>]   Compile a program to a .NET assembly
 caca check <file.caca>               Report errors without running anything
@@ -96,13 +97,64 @@ The full specification, including the semantics of each construct, is in
 | Strings | `+` concatenates; `\n \r \t \0 \\ \"` escapes |
 | Comments | `// line` and `/* block */` |
 
+## Tooling
+
+### An interactive prompt
+
+```
+$ caca repl
+cacalang REPL. Type a statement, or :help for commands.
+caca> var x = 21;
+caca> x * 2
+42
+caca> func twice(n: int): int do
+  ...     return n * 2;
+  ... end
+caca> twice(50)
+100
+```
+
+A bare expression is printed; anything else runs as a statement. Entries carry
+over, and a definition spanning several lines is read until it is complete.
+`:list`, `:reset` and `:quit` do what they sound like.
+
+### Editor support
+
+`caca-langserver` implements the Language Server Protocol, and
+[`editors/vscode`](editors/vscode) is a Visual Studio Code extension that uses
+it.
+
+| Feature | Request |
+|---|---|
+| Errors as you type | `textDocument/publishDiagnostics` |
+| Hover showing a name's type | `textDocument/hover` |
+| Go to definition | `textDocument/definition` |
+| Find all references | `textDocument/references` |
+| Outline and breadcrumbs | `textDocument/documentSymbol` |
+
+```sh
+dotnet publish src/Caca.LanguageServer -c Release -o ~/.caca/bin
+```
+
+Then put it on your `PATH` and install the extension; see
+[`editors/vscode/README.md`](editors/vscode/README.md).
+
+The server compiles the whole file on every keystroke. Programs in this
+language are small enough that this is imperceptible, and it means the editor
+sees exactly what the compiler sees, with no second, incremental analysis that
+could disagree with it. The protocol framing is written out in
+[`Protocol/JsonRpc.cs`](src/Caca.LanguageServer/Protocol/JsonRpc.cs) rather
+than taken from a package, because it is only a few dozen lines and this
+project is meant to be read.
+
 ## How it works
 
 | Stage | Where | What it does |
 |---|---|---|
 | Lexer | `src/Caca.Compiler/Syntax/Lexer.cs` | Source text to tokens carrying source positions |
 | Parser | `src/Caca.Compiler/Syntax/Parser.cs` | Recursive descent, precedence climbing for expressions |
-| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` | Collects function signatures, resolves the type of every expression, reports semantic errors |
+| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` | Collects function signatures, resolves the type of every expression, binds every name to a symbol, reports semantic errors |
+| Language server | `src/Caca.LanguageServer/` | Answers an editor's questions from those symbols |
 | Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`caca run`) |
 | IL emitter | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`caca build`) |
 

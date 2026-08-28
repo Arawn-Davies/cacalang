@@ -58,6 +58,7 @@ internal static class Program
 
         return command switch
         {
+            "repl" => new Repl().Run(),
             "run" => Run(rest),
             "build" => Build(rest),
             "check" => Check(rest),
@@ -65,7 +66,7 @@ internal static class Program
         };
     }
 
-    private static bool IsCommand(string value) => value is "run" or "build" or "check";
+    private static bool IsCommand(string value) => value is "run" or "build" or "check" or "repl";
 
     private static int UnknownCommand(string command)
     {
@@ -178,6 +179,7 @@ internal static class Program
             caca - the Good for Nothing compiler
 
             Usage:
+              caca repl                            Start an interactive prompt
               caca run <file.caca>                 Run a program with the interpreter
               caca build <file.caca> [-o <path>]   Compile a program to a .NET assembly
               caca check <file.caca>               Report errors without running anything

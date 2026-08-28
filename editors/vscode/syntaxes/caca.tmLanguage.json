@@ -1,0 +1,92 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "cacalang",
+  "scopeName": "source.caca",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#constants" },
+    { "include": "#types" },
+    { "include": "#functions" },
+    { "include": "#numbers" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.caca",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.caca",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.caca",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.caca",
+          "match": "\\\\[nrt0\\\\\"]"
+        },
+        {
+          "name": "invalid.illegal.unknown-escape.caca",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.caca",
+          "match": "\\b(if|then|else|while|for|to|do|end|break|continue|return)\\b"
+        },
+        {
+          "name": "keyword.declaration.caca",
+          "match": "\\b(var|func)\\b"
+        },
+        {
+          "name": "keyword.other.caca",
+          "match": "\\b(print|read_int|read_string)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "name": "constant.language.boolean.caca",
+      "match": "\\b(true|false)\\b"
+    },
+    "types": {
+      "name": "support.type.caca",
+      "match": "\\b(int|string|bool)\\b"
+    },
+    "functions": {
+      "patterns": [
+        {
+          "match": "\\b(func)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.caca" },
+            "2": { "name": "entity.name.function.caca" }
+          }
+        },
+        {
+          "name": "entity.name.function.call.caca",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()"
+        }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.integer.caca",
+      "match": "\\b[0-9]+\\b"
+    },
+    "operators": {
+      "name": "keyword.operator.caca",
+      "match": "(==|!=|<=|>=|&&|\\|\\||[+\\-*/%<>=!])"
+    }
+  }
+}

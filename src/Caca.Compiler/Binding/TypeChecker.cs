@@ -18,20 +18,32 @@ public sealed class TypeChecker
 {
     private readonly DiagnosticBag _diagnostics;
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
-    private Dictionary<string, CacaType> _symbols = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Every place a name is used, and what it refers to, in source order.
+    /// </summary>
+    /// <remarks>
+    /// This is what the language server answers hover, go-to-definition and
+    /// document-symbol requests from. The compiler itself does not need it.
+    /// </remarks>
+    private readonly List<SymbolReference> _references = [];
+
+    private Dictionary<string, VariableSymbol> _symbols = new(StringComparer.Ordinal);
     private FunctionSymbol? _currentFunction;
     private int _loopDepth;
 
     private TypeChecker(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
 
     /// <summary>Type-checks <paramref name="unit"/> in place.</summary>
-    /// <returns>The functions it declares, by name.</returns>
-    public static IReadOnlyDictionary<string, FunctionSymbol> Check(CompilationUnit unit, DiagnosticBag diagnostics)
+    public static BindingResult Check(CompilationUnit unit, DiagnosticBag diagnostics)
     {
         var checker = new TypeChecker(diagnostics);
         checker.CheckCompilationUnit(unit);
-        return checker._functions;
+        return new BindingResult(checker._functions, checker._references);
     }
+
+    private void Reference(SourceLocation location, ISymbol symbol, bool isDefinition = false) =>
+        _references.Add(new SymbolReference(location, symbol, isDefinition));
 
     private void CheckCompilationUnit(CompilationUnit unit)
     {
@@ -49,7 +61,7 @@ public sealed class TypeChecker
 
         // Top-level code has its own scope and cannot see a function's locals,
         // nor a function the top-level variables.
-        _symbols = new Dictionary<string, CacaType>(StringComparer.Ordinal);
+        _symbols = new Dictionary<string, VariableSymbol>(StringComparer.Ordinal);
         _currentFunction = null;
         CheckStatement(unit.TopLevel);
     }
@@ -75,9 +87,13 @@ public sealed class TypeChecker
         }
 
         var returnType = function.ReturnType is null ? CacaType.Void : ResolveType(function.ReturnType);
-        var symbol = new FunctionSymbol(function.Name, parameters, returnType, function);
+        var symbol = new FunctionSymbol(function.Name, parameters, returnType, function, function.NameLocation);
 
-        if (!_functions.TryAdd(function.Name, symbol))
+        if (_functions.TryAdd(function.Name, symbol))
+        {
+            Reference(function.NameLocation, symbol, isDefinition: true);
+        }
+        else
         {
             _diagnostics.Report(
                 DiagnosticCode.FunctionAlreadyDeclared,
@@ -94,12 +110,17 @@ public sealed class TypeChecker
             return;
         }
 
-        _symbols = new Dictionary<string, CacaType>(StringComparer.Ordinal);
+        _symbols = new Dictionary<string, VariableSymbol>(StringComparer.Ordinal);
         _currentFunction = symbol;
 
-        foreach (var (name, type) in symbol.Parameters)
+        for (var i = 0; i < symbol.Parameters.Count; i++)
         {
-            _symbols[name] = type;
+            var declaration = function.Parameters[i];
+            var parameter = new VariableSymbol(
+                declaration.Name, symbol.Parameters[i].Type, declaration.NameLocation, VariableKind.Parameter);
+
+            _symbols[declaration.Name] = parameter;
+            Reference(declaration.NameLocation, parameter, isDefinition: true);
         }
 
         CheckStatement(function.Body);
@@ -317,17 +338,21 @@ public sealed class TypeChecker
 
         // A failed initializer still declares the name, which keeps every later
         // use of it from producing a second, redundant error.
-        _symbols[declaration.Name] = type;
+        var symbol = new VariableSymbol(declaration.Name, type, declaration.NameLocation, VariableKind.Local);
+        _symbols[declaration.Name] = symbol;
+        Reference(declaration.NameLocation, symbol, isDefinition: true);
     }
 
     private void CheckAssignment(AssignmentStatement assignment)
     {
         var valueType = CheckExpression(assignment.Value);
 
-        if (!TryLookup(assignment.Name, assignment.Location, out var declaredType))
+        if (!TryLookup(assignment.Name, assignment.NameLocation, out var symbol))
         {
             return;
         }
+
+        var declaredType = symbol.Type;
 
         if (valueType != CacaType.Error && declaredType != CacaType.Error && valueType != declaredType)
         {
@@ -341,10 +366,12 @@ public sealed class TypeChecker
 
     private void CheckRead(ReadStatement read)
     {
-        if (!TryLookup(read.Name, read.Location, out var declaredType))
+        if (!TryLookup(read.Name, read.NameLocation, out var symbol))
         {
             return;
         }
+
+        var declaredType = symbol.Type;
 
         if (declaredType != CacaType.Error && declaredType != read.Type)
         {
@@ -364,20 +391,27 @@ public sealed class TypeChecker
 
         if (_symbols.TryGetValue(loop.Name, out var existing))
         {
-            if (existing != CacaType.Error && existing != CacaType.Int)
+            if (existing.Type != CacaType.Error && existing.Type != CacaType.Int)
             {
                 _diagnostics.Report(
                     DiagnosticCode.LoopVariableMustBeInt,
                     loop.Location,
-                    $"the loop variable '{loop.Name}' must be of type int, but it is of type {existing.Describe()}");
+                    $"the loop variable '{loop.Name}' must be of type int, " +
+                    $"but it is of type {existing.Type.Describe()}");
             }
+
+            Reference(loop.NameLocation, existing);
         }
         else
         {
             // A loop over an undeclared name declares it, so `for i = 1 to 3`
             // works without a preceding `var i = 0;`.
-            _symbols[loop.Name] = CacaType.Int;
+            var symbol = new VariableSymbol(
+                loop.Name, CacaType.Int, loop.NameLocation, VariableKind.LoopVariable);
+
+            _symbols[loop.Name] = symbol;
             loop.DeclaresVariable = true;
+            Reference(loop.NameLocation, symbol, isDefinition: true);
         }
 
         _loopDepth++;
@@ -437,10 +471,11 @@ public sealed class TypeChecker
         }
     }
 
-    private bool TryLookup(string name, SourceLocation location, out CacaType type)
+    private bool TryLookup(string name, SourceLocation location, out VariableSymbol symbol)
     {
-        if (_symbols.TryGetValue(name, out type))
+        if (_symbols.TryGetValue(name, out symbol!))
         {
+            Reference(location, symbol);
             return true;
         }
 
@@ -449,7 +484,7 @@ public sealed class TypeChecker
             location,
             $"'{name}' is not declared; use 'var {name} = ...' before using it");
 
-        type = CacaType.Error;
+        symbol = null!;
         return false;
     }
 
@@ -472,7 +507,7 @@ public sealed class TypeChecker
     }
 
     private CacaType CheckVariable(VariableExpression variable) =>
-        TryLookup(variable.Name, variable.Location, out var type) ? type : CacaType.Error;
+        TryLookup(variable.Name, variable.Location, out var symbol) ? symbol.Type : CacaType.Error;
 
     private CacaType CheckCall(CallExpression call)
     {
@@ -489,6 +524,7 @@ public sealed class TypeChecker
         }
 
         call.Target = function;
+        Reference(call.NameLocation, function);
 
         if (argumentTypes.Length != function.Parameters.Count)
         {

@@ -1,0 +1,53 @@
+{
+  "name": "cacalang",
+  "displayName": "cacalang",
+  "description": "Language support for cacalang: live errors, hover types, go to definition.",
+  "version": "0.1.0",
+  "publisher": "cacalang",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./client.js",
+  "activationEvents": [
+    "onLanguage:caca"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "caca",
+        "aliases": [
+          "cacalang",
+          "caca"
+        ],
+        "extensions": [
+          ".caca"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "caca",
+        "scopeName": "source.caca",
+        "path": "./syntaxes/caca.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "cacalang",
+      "properties": {
+        "cacalang.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the caca-langserver executable. Leave empty to use 'caca-langserver' from PATH."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

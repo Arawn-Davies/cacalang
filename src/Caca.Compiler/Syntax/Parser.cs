@@ -128,7 +128,8 @@ public sealed class Parser
         var body = ParseStatements(TokenKind.EndKeyword);
         var end = Expect(TokenKind.EndKeyword, "to close the function body");
 
-        return new FunctionDeclaration(name.Text, parameters, returnType, body, keyword.Location.To(end.Location));
+        return new FunctionDeclaration(
+            name.Text, name.Location, parameters, returnType, body, keyword.Location.To(end.Location));
     }
 
     private List<ParameterDeclaration> ParseParameterList()
@@ -141,7 +142,8 @@ public sealed class Parser
             var name = Expect(TokenKind.Identifier, "as a parameter name");
             Expect(TokenKind.Colon, $"after the parameter '{name.Text}'");
             var type = ParseTypeReference();
-            parameters.Add(new ParameterDeclaration(name.Text, type, name.Location.To(type.Location)));
+            parameters.Add(
+                new ParameterDeclaration(name.Text, name.Location, type, name.Location.To(type.Location)));
 
             if (!Match(TokenKind.Comma))
             {
@@ -246,7 +248,7 @@ public sealed class Parser
         var initializer = ParseExpression();
 
         return new VariableDeclaration(
-            name.Text, declaredType, initializer, keyword.Location.To(initializer.Location));
+            name.Text, name.Location, declaredType, initializer, keyword.Location.To(initializer.Location));
     }
 
     private Statement ParseAssignment()
@@ -254,7 +256,7 @@ public sealed class Parser
         var name = Advance();
         Expect(TokenKind.Equals, $"after '{name.Text}'");
         var value = ParseExpression();
-        return new AssignmentStatement(name.Text, value, name.Location.To(value.Location));
+        return new AssignmentStatement(name.Text, name.Location, value, name.Location.To(value.Location));
     }
 
     private Statement ParsePrint()
@@ -268,7 +270,7 @@ public sealed class Parser
     {
         var keyword = Advance();
         var name = Expect(TokenKind.Identifier, $"after '{keyword.Text}'");
-        return new ReadStatement(name.Text, type, keyword.Location.To(name.Location));
+        return new ReadStatement(name.Text, name.Location, type, keyword.Location.To(name.Location));
     }
 
     private Statement ParseFor()
@@ -282,7 +284,7 @@ public sealed class Parser
         Expect(TokenKind.DoKeyword, "after the second loop bound");
         var body = ParseStatements(TokenKind.EndKeyword);
         var end = Expect(TokenKind.EndKeyword, "to close the loop body");
-        return new ForStatement(name.Text, from, to, body, keyword.Location.To(end.Location));
+        return new ForStatement(name.Text, name.Location, from, to, body, keyword.Location.To(end.Location));
     }
 
     /// <summary>
@@ -361,7 +363,7 @@ public sealed class Parser
         }
 
         var close = Expect(TokenKind.CloseParen, $"to close the arguments to '{name.Text}'");
-        return new CallExpression(name.Text, arguments, name.Location.To(close.Location));
+        return new CallExpression(name.Text, name.Location, arguments, name.Location.To(close.Location));
     }
 
     private Statement ParseBreak() => new BreakStatement(Advance().Location);
