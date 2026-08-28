@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Caca.Cli</RootNamespace>
+    <AssemblyName>caca</AssemblyName>
+    <Description>Command line driver for the Good for Nothing compiler.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caca.Compiler\Caca.Compiler.csproj" />
+  </ItemGroup>
+
+</Project>

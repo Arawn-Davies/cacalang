@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Caca</RootNamespace>
+    <AssemblyName>Caca.Compiler</AssemblyName>
+    <Description>Scanner, parser, type checker, interpreter and IL emitter for the Good for Nothing language.</Description>
+  </PropertyGroup>
+
+</Project>
