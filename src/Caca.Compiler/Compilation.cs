@@ -65,14 +65,33 @@ public sealed class Compilation
         new Interpreter(Functions, input, output).Run(Program);
     }
 
-    /// <summary>Compiles the program to a .NET assembly at <paramref name="outputPath"/>.</summary>
-    /// <returns>The paths of the assembly and its runtime configuration file.</returns>
+    /// <summary>
+    /// Compiles the program to a .NET assembly, and to a native launcher that
+    /// starts it.
+    /// </summary>
+    /// <param name="launcherPath">
+    /// Where to write the runnable file. The assembly is written beside it with
+    /// the same name and a <c>.dll</c> extension, because on modern .NET the
+    /// assembly is always a <c>.dll</c> and the runnable file is a separate
+    /// native stub.
+    /// </param>
+    /// <param name="withLauncher">False to emit only the assembly.</param>
     /// <exception cref="InvalidOperationException">The program did not compile.</exception>
-    public (string AssemblyPath, string RuntimeConfigPath) Emit(string outputPath)
+    public EmitResult Emit(string launcherPath, bool withLauncher = true)
     {
         EnsureSucceeded();
-        var configPath = IlEmitter.EmitAssembly(Program, Functions, outputPath);
-        return (outputPath, configPath);
+
+        var assemblyPath = Path.ChangeExtension(launcherPath, ".dll");
+        var configPath = IlEmitter.EmitAssembly(Program, Functions, assemblyPath);
+
+        if (!withLauncher)
+        {
+            return new EmitResult(assemblyPath, configPath, null, null);
+        }
+
+        return AppHost.TryCreate(assemblyPath, launcherPath, out var warning)
+            ? new EmitResult(assemblyPath, configPath, launcherPath, null)
+            : new EmitResult(assemblyPath, configPath, null, warning);
     }
 
     /// <summary>Formats every diagnostic, one per line, for display.</summary>
