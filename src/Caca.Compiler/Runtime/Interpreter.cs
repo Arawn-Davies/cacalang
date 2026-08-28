@@ -53,6 +53,10 @@ public sealed class Interpreter
     /// </remarks>
     private const int StackSize = 16 * 1024 * 1024;
 
+    /// <summary>What <c>read_float</c> accepts.</summary>
+    private const NumberStyles FloatStyles =
+        NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
+
     private readonly IReadOnlyDictionary<string, FunctionSymbol> _functions;
     private readonly TextReader _input;
     private readonly TextWriter _output;
@@ -239,7 +243,20 @@ public sealed class Interpreter
             return line;
         }
 
-        if (!int.TryParse(line.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value))
+        var text = line.Trim();
+
+        if (type == CacaType.Float)
+        {
+            // Parsing is invariant so input means the same thing everywhere.
+            if (!double.TryParse(text, FloatStyles, CultureInfo.InvariantCulture, out var real))
+            {
+                throw new CacaRuntimeException($"'{line}' is not a number");
+            }
+
+            return real;
+        }
+
+        if (!int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value))
         {
             throw new CacaRuntimeException($"'{line}' is not an integer");
         }
@@ -247,7 +264,13 @@ public sealed class Interpreter
         return value;
     }
 
-    private object Evaluate(Expression expression) => expression switch
+    private object Evaluate(Expression expression) => Widen(expression, EvaluateCore(expression));
+
+    /// <summary>Applies the widening the type checker decided on.</summary>
+    private static object Widen(Expression expression, object value) =>
+        expression.ConvertedTo == CacaType.Float && value is int i ? (double)i : value;
+
+    private object EvaluateCore(Expression expression) => expression switch
     {
         LiteralExpression literal => literal.Value,
         ParenthesizedExpression parenthesized => Evaluate(parenthesized.Expression),
@@ -311,10 +334,29 @@ public sealed class Interpreter
         return unary.Operator switch
         {
             UnaryOperator.Identity => operand,
-            UnaryOperator.Negate => unchecked(-(int)operand),
+            UnaryOperator.Negate => Negate(operand),
             UnaryOperator.Not => !(bool)operand,
             _ => throw new ArgumentOutOfRangeException(nameof(unary), unary.Operator, "unhandled unary operator"),
         };
+    }
+
+    /// <summary>
+    /// Negates a number, keeping it the type it already was.
+    /// </summary>
+    /// <remarks>
+    /// Written with separate returns so that each result converts to object on
+    /// its own. A conditional or a switch expression would give the arms one
+    /// common type, which for an int and a double is double, quietly turning
+    /// every negated int into a float.
+    /// </remarks>
+    private static object Negate(object operand)
+    {
+        if (operand is double d)
+        {
+            return -d;
+        }
+
+        return unchecked(-(int)operand);
     }
 
     private object EvaluateBinary(BinaryExpression binary)
@@ -334,12 +376,18 @@ public sealed class Interpreter
 
         switch (binary.Operator)
         {
-            case BinaryOperator.Equal:
-                return Equals(left, right);
-            case BinaryOperator.NotEqual:
-                return !Equals(left, right);
             case BinaryOperator.Add when binary.Type == CacaType.String:
                 return Stringify(left) + Stringify(right);
+
+            case BinaryOperator.Equal when left is not double && right is not double:
+                return Equals(left, right);
+            case BinaryOperator.NotEqual when left is not double && right is not double:
+                return !Equals(left, right);
+        }
+
+        if (left is double || right is double)
+        {
+            return FloatOperation(binary, Convert.ToDouble(left), Convert.ToDouble(right));
         }
 
         var a = (int)left;
@@ -370,11 +418,36 @@ public sealed class Interpreter
         }
     }
 
+    /// <summary>
+    /// Arithmetic and comparison on floats.
+    /// </summary>
+    /// <remarks>
+    /// Division by zero is not an error here: IEEE 754 defines it, and the
+    /// answer is an infinity. Integer division has no such answer, which is why
+    /// that case still fails.
+    /// </remarks>
+    private static object FloatOperation(BinaryExpression binary, double a, double b) => binary.Operator switch
+    {
+        BinaryOperator.Add => a + b,
+        BinaryOperator.Subtract => a - b,
+        BinaryOperator.Multiply => a * b,
+        BinaryOperator.Divide => a / b,
+        BinaryOperator.Modulo => a % b,
+        BinaryOperator.Less => a < b,
+        BinaryOperator.LessOrEqual => a <= b,
+        BinaryOperator.Greater => a > b,
+        BinaryOperator.GreaterOrEqual => a >= b,
+        BinaryOperator.Equal => a == b,
+        BinaryOperator.NotEqual => a != b,
+        _ => throw new ArgumentOutOfRangeException(nameof(binary), binary.Operator, "unhandled binary operator"),
+    };
+
     /// <summary>Renders a value the way <c>print</c> does.</summary>
     private static string Stringify(object value) => value switch
     {
         int i => i.ToString(CultureInfo.InvariantCulture),
         bool b => b ? "true" : "false",
+        double d => FloatFormat.ToText(d),
         _ => (string)value,
     };
 }

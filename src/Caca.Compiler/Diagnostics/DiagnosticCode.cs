@@ -30,4 +30,5 @@ public enum DiagnosticCode
     ReturnOutsideFunction = 18,
     NotAllPathsReturn = 19,
     NoValueProduced = 20,
+    FloatOutOfRange = 21,
 }

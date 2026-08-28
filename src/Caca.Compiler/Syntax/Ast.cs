@@ -236,6 +236,20 @@ public abstract class Expression(SourceLocation location) : SyntaxNode(location)
     }
 
     public bool HasType => _type is not null;
+
+    /// <summary>
+    /// The type this expression's value is widened to before it is used, if it
+    /// is widened at all.
+    /// </summary>
+    /// <remarks>
+    /// An int used where a float is wanted has to be converted. Deciding that
+    /// once, here, keeps the interpreter and the emitter from each working it
+    /// out for themselves and disagreeing about an edge case.
+    /// </remarks>
+    public CacaType? ConvertedTo { get; internal set; }
+
+    /// <summary>The type of this expression's value once any widening is applied.</summary>
+    public CacaType EffectiveType => ConvertedTo ?? Type;
 }
 
 /// <summary>An integer or string literal.</summary>
@@ -251,6 +265,8 @@ public sealed class LiteralExpression(object value, CacaType type, SourceLocatio
     public string StringValue => (string)Value;
 
     public bool BoolValue => (bool)Value;
+
+    public double FloatValue => (double)Value;
 }
 
 /// <summary>A reference to a variable.</summary>

@@ -202,6 +202,7 @@ public sealed class Parser
         TokenKind.PrintKeyword => ParsePrint(),
         TokenKind.ReadIntKeyword => ParseRead(CacaType.Int),
         TokenKind.ReadStringKeyword => ParseRead(CacaType.String),
+        TokenKind.ReadFloatKeyword => ParseRead(CacaType.Float),
         TokenKind.ForKeyword => ParseFor(),
         TokenKind.IfKeyword => ParseIf(consumeEnd: true),
         TokenKind.WhileKeyword => ParseWhile(),
@@ -457,6 +458,10 @@ public sealed class Parser
             case TokenKind.IntLiteral:
                 Advance();
                 return new LiteralExpression(token.IntValue, CacaType.Int, token.Location);
+
+            case TokenKind.FloatLiteral:
+                Advance();
+                return new LiteralExpression(token.FloatValue, CacaType.Float, token.Location);
 
             case TokenKind.StringLiteral:
                 Advance();

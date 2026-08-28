@@ -1,0 +1,23 @@
+// Floats, and what integer division would have got wrong.
+
+func compound(principal: float, rate: float, years: int): float do
+    var amount = principal;
+
+    for year = 1 to years do
+        amount = amount + amount * rate;
+    end;
+
+    return amount;
+end
+
+var deposit = 0.0;
+print "How much are you depositing?";
+read_float deposit;
+
+// The rate is written as a float on purpose: 5 / 100 is 0, but 5.0 / 100.0
+// is 0.05.
+var rate = 5.0 / 100.0;
+
+for years = 1 to 5 do
+    print years + " years: " + compound(deposit, rate, years);
+end;
