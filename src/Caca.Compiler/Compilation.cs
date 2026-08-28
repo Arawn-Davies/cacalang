@@ -79,13 +79,17 @@ public sealed class Compilation
     /// native stub.
     /// </param>
     /// <param name="withLauncher">False to emit only the assembly.</param>
+    /// <param name="sourcePath">
+    /// The source file to record in the debugging information, so a debugger
+    /// can step through it. Null writes no symbols.
+    /// </param>
     /// <exception cref="InvalidOperationException">The program did not compile.</exception>
-    public EmitResult Emit(string launcherPath, bool withLauncher = true)
+    public EmitResult Emit(string launcherPath, bool withLauncher = true, string? sourcePath = null)
     {
         EnsureSucceeded();
 
         var assemblyPath = Path.ChangeExtension(launcherPath, ".dll");
-        var configPath = IlEmitter.EmitAssembly(Program, Functions, assemblyPath);
+        var configPath = IlEmitter.EmitAssembly(Program, Functions, assemblyPath, sourcePath);
 
         if (!withLauncher)
         {

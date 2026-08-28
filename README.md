@@ -60,6 +60,7 @@ caca <file.caca>                     Shorthand for 'caca build'
 |---|---|
 | `hello.exe` | A native launcher you run directly, on Windows, macOS and Linux alike |
 | `hello.dll` | The assembly holding the compiled IL |
+| `hello.pdb` | Debugging symbols, so a debugger can step through the `.caca` source |
 | `hello.runtimeconfig.json` | Which runtime the host should load |
 
 On .NET Framework an `.exe` *was* the assembly. On modern .NET an assembly is
@@ -69,6 +70,28 @@ produces that stub the same way `dotnet build` does, by taking the template
 that ships with the SDK and writing the assembly's name into it. The stub is
 built for the machine that produced it. `--no-launcher` skips it, leaving an
 assembly to run with `dotnet hello.dll`.
+
+### Debugging
+
+`caca build` also writes a portable PDB, so a compiled program can be stepped
+through **in its own source**. Each statement carries a sequence point back to
+the line it was written on, and locals keep their names, so a debugger shows
+`total` rather than `V_0`.
+
+Attach to a compiled program with any .NET debugger. In VS Code, with the C#
+extension installed:
+
+```json
+{
+  "type": "coreclr",
+  "request": "launch",
+  "name": "caca",
+  "program": "${workspaceFolder}/hello.dll",
+  "justMyCode": false
+}
+```
+
+`--no-debug` skips the symbols.
 
 ## Language
 
@@ -171,6 +194,7 @@ project is meant to be read.
 | Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`caca run`) |
 | IL emitter | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`caca build`) |
 | App host | `src/Caca.Compiler/Emit/AppHost.cs` | Turns the SDK's apphost template into a launcher for the emitted assembly |
+| Symbols | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a portable PDB with sequence points and local names |
 
 Errors are collected as diagnostics rather than thrown, so one run reports every
 problem it can find:

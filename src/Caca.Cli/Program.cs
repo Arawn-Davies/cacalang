@@ -101,6 +101,7 @@ internal static class Program
     {
         string? outputPath = null;
         var withLauncher = true;
+        var withDebugInfo = true;
         var positional = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
@@ -108,6 +109,10 @@ internal static class Program
             if (args[i] is "--no-launcher")
             {
                 withLauncher = false;
+            }
+            else if (args[i] is "--no-debug")
+            {
+                withDebugInfo = false;
             }
             else if (args[i] is "-o" or "--output")
             {
@@ -133,9 +138,17 @@ internal static class Program
         // The runnable file keeps the .exe name the language has always used,
         // on every platform. The assembly beside it must be a .dll.
         outputPath ??= Path.ChangeExtension(Path.GetFileName(positional[0]), ".exe");
-        var result = compilation.Emit(outputPath, withLauncher);
+        var sourcePath = withDebugInfo ? Path.GetFullPath(positional[0]) : null;
+        var result = compilation.Emit(outputPath, withLauncher, sourcePath);
 
         Console.WriteLine($"Compiled {compilation.FileName} to {result.AssemblyPath}");
+
+        if (withDebugInfo)
+        {
+            Console.WriteLine(
+                $"Wrote {Path.GetFileName(Path.ChangeExtension(result.AssemblyPath, ".pdb"))} " +
+                "so a debugger can step through the source");
+        }
 
         if (result.Warning is not null)
         {
@@ -213,6 +226,7 @@ internal static class Program
             Options:
               -o, --output <path>   Where to write the executable (default: <file>.exe)
                   --no-launcher     Emit only the assembly, to be run with 'dotnet'
+                  --no-debug        Do not write debugging symbols
               -h, --help            Show this help
                   --version         Show the compiler version
             """);

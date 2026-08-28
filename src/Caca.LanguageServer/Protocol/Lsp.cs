@@ -23,13 +23,17 @@ public static class Lsp
 
     public static JsonObject Range(SourceLocation location)
     {
-        // A zero-length span still needs to be visible, so it covers one character.
-        var length = Math.Max(1, location.Length);
+        // A span may cross lines, so the end comes from the location rather
+        // than from adding its length to the start column. A zero-length span
+        // still has to be visible, so it covers one character.
+        var endColumn = location.EndLine == location.Line && location.EndColumn <= location.Column
+            ? location.Column + 1
+            : location.EndColumn;
 
         return new JsonObject
         {
             ["start"] = Position(location.Line, location.Column),
-            ["end"] = Position(location.Line, location.Column + length),
+            ["end"] = Position(location.EndLine, endColumn),
         };
     }
 
