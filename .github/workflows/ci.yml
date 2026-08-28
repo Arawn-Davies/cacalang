@@ -36,3 +36,4 @@ jobs:
         run: |
           dotnet run --project src/Caca.Cli --configuration Release --no-build -- build samples/fizzbuzz.caca
           echo 5 | ./fizzbuzz.exe
+          test -f fizzbuzz.pdb || { echo "no symbols were written"; exit 1; }

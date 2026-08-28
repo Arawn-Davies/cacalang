@@ -8,6 +8,7 @@ namespace Caca.Tests;
 /// its entry point in process. This is what proves the emitted IL is valid:
 /// the runtime rejects a malformed method body when it is jitted.
 /// </summary>
+[Collection(ConsoleCollection.Name)]
 public class EmitterTests : IDisposable
 {
     private readonly string _directory =

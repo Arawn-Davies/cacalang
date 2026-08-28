@@ -1,11 +1,15 @@
+using System.Collections.Immutable;
+using System.Diagnostics.SymbolStore;
 using System.Globalization;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Text;
 using System.Text.Json;
 using Caca.Binding;
+using Caca.Diagnostics;
 using Caca.Syntax;
 
 namespace Caca.Emit;
@@ -28,6 +32,16 @@ namespace Caca.Emit;
 /// </remarks>
 public sealed class IlEmitter
 {
+    /// <summary>
+    /// Identifies the language in the debugging information. Debuggers that do
+    /// not know it fall back to showing the file as text, which is all this
+    /// language needs.
+    /// </summary>
+    /// <summary>The version of the portable PDB format written.</summary>
+    private const ushort PortablePdbVersion = 0x0100;
+
+    private static readonly Guid LanguageGuid = new("ca6a1a19-cafe-4caa-9a1a-cacaca1a4caa");
+
     private static readonly MethodInfo ConsoleWriteLineString =
         typeof(Console).GetMethod(nameof(Console.WriteLine), [typeof(string)])!;
 
@@ -68,10 +82,31 @@ public sealed class IlEmitter
 
     private readonly ILGenerator _il;
 
-    private IlEmitter(ILGenerator il, IReadOnlyDictionary<string, MethodBuilder> methods)
+    /// <summary>The source file, or null when no debugging information is wanted.</summary>
+    private readonly ISymbolDocumentWriter? _document;
+
+    private IlEmitter(
+        ILGenerator il,
+        IReadOnlyDictionary<string, MethodBuilder> methods,
+        ISymbolDocumentWriter? document)
     {
         _il = il;
         _methods = methods;
+        _document = document;
+    }
+
+    /// <summary>
+    /// Records that the instructions about to be emitted come from a particular
+    /// piece of source, which is what lets a debugger step through a .caca file.
+    /// </summary>
+    private void MarkPosition(SourceLocation location)
+    {
+        if (_document is null || location.Line == 0)
+        {
+            return;
+        }
+
+        _il.MarkSequencePoint(_document, location.Line, location.Column, location.EndLine, location.EndColumn);
     }
 
     /// <summary>
@@ -83,7 +118,8 @@ public sealed class IlEmitter
     public static string EmitAssembly(
         CompilationUnit unit,
         IReadOnlyDictionary<string, FunctionSymbol> functions,
-        string outputPath)
+        string outputPath,
+        string? sourcePath = null)
     {
         var assemblyName = Path.GetFileNameWithoutExtension(outputPath);
 
@@ -96,6 +132,12 @@ public sealed class IlEmitter
         var module = builder.DefineDynamicModule(assemblyName);
         var programType = module.DefineType("Program", TypeAttributes.Public | TypeAttributes.Sealed);
 
+        // Naming the source file is what ties the emitted instructions back to
+        // the text they came from.
+        var document = sourcePath is null
+            ? null
+            : module.DefineDocument(Path.GetFullPath(sourcePath), LanguageGuid);
+
         // Every method is declared before any body is emitted, so a call can
         // reference a function declared later in the file, or the one it is in.
         var methods = DeclareMethods(programType, functions);
@@ -103,7 +145,7 @@ public sealed class IlEmitter
         foreach (var (name, method) in methods)
         {
             var function = functions[name];
-            var emitter = new IlEmitter(method.GetILGenerator(), methods);
+            var emitter = new IlEmitter(method.GetILGenerator(), methods, document);
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
@@ -120,13 +162,13 @@ public sealed class IlEmitter
             typeof(void),
             Type.EmptyTypes);
 
-        var mainEmitter = new IlEmitter(main.GetILGenerator(), methods);
+        var mainEmitter = new IlEmitter(main.GetILGenerator(), methods, document);
         mainEmitter.EmitStatement(unit.TopLevel);
         mainEmitter._il.Emit(OpCodes.Ret);
 
         programType.CreateType();
 
-        WritePortableExecutable(builder, main, outputPath);
+        WritePortableExecutable(builder, main, outputPath, withDebugInfo: document is not null);
         return WriteRuntimeConfig(outputPath);
     }
 
@@ -186,19 +228,14 @@ public sealed class IlEmitter
     private static void WritePortableExecutable(
         PersistedAssemblyBuilder builder,
         MethodBuilder entryPoint,
-        string outputPath)
+        string outputPath,
+        bool withDebugInfo)
     {
-        var metadata = builder.GenerateMetadata(out var ilStream, out var mappedFieldData);
+        var metadata = builder.GenerateMetadata(out var ilStream, out var mappedFieldData, out var pdbMetadata);
 
-        var peBuilder = new ManagedPEBuilder(
-            header: new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage),
-            metadataRootBuilder: new MetadataRootBuilder(metadata),
-            ilStream: ilStream,
-            mappedFieldData: mappedFieldData,
-            entryPoint: MetadataTokens.MethodDefinitionHandle(entryPoint.MetadataToken));
-
-        var blob = new BlobBuilder();
-        peBuilder.Serialize(blob);
+        // A method's token is only assigned while the metadata is generated, so
+        // the entry point cannot be resolved before that call.
+        var entryPointHandle = MetadataTokens.MethodDefinitionHandle(entryPoint.MetadataToken);
 
         var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
 
@@ -207,8 +244,81 @@ public sealed class IlEmitter
             Directory.CreateDirectory(directory);
         }
 
+        // The debug directory is what tells a debugger the symbols exist and
+        // where to look for them.
+        var debugDirectory = withDebugInfo
+            ? WriteProgramDatabase(pdbMetadata, metadata.GetRowCounts(), entryPointHandle, outputPath)
+            : null;
+
+        var peBuilder = new ManagedPEBuilder(
+            header: new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage),
+            metadataRootBuilder: new MetadataRootBuilder(metadata),
+            ilStream: ilStream,
+            mappedFieldData: mappedFieldData,
+            debugDirectoryBuilder: debugDirectory,
+            entryPoint: entryPointHandle);
+
+        var blob = new BlobBuilder();
+        peBuilder.Serialize(blob);
+
         using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write);
         blob.WriteContentTo(stream);
+    }
+
+    /// <summary>
+    /// Writes a portable PDB beside the assembly and describes it for the
+    /// assembly's debug directory.
+    /// </summary>
+    /// <remarks>
+    /// The sequence points and local names recorded while emitting have already
+    /// been collected into <paramref name="pdbMetadata"/>; what remains is to
+    /// serialize them and to give the pair a shared identifier so a debugger can
+    /// tell that the symbols belong to this build of the assembly.
+    /// </remarks>
+    private static DebugDirectoryBuilder WriteProgramDatabase(
+        MetadataBuilder pdbMetadata,
+        ImmutableArray<int> typeSystemRowCounts,
+        MethodDefinitionHandle entryPointHandle,
+        string outputPath)
+    {
+        var pdbPath = Path.ChangeExtension(outputPath, ".pdb");
+
+        // The identifier must be the same in both files but need not be random:
+        // deriving it from the content keeps a build reproducible.
+        var contentId = new BlobContentId(HashOf(pdbMetadata, outputPath), stamp: 0x5CACA000);
+
+        var pdbBuilder = new PortablePdbBuilder(
+            pdbMetadata,
+            typeSystemRowCounts,
+            entryPointHandle,
+            _ => contentId);
+
+        var pdbBlob = new BlobBuilder();
+        pdbBuilder.Serialize(pdbBlob);
+
+        using (var pdbStream = new FileStream(pdbPath, FileMode.Create, FileAccess.Write))
+        {
+            pdbBlob.WriteContentTo(pdbStream);
+        }
+
+        var debugDirectory = new DebugDirectoryBuilder();
+        debugDirectory.AddCodeViewEntry(pdbPath, contentId, portablePdbVersion: PortablePdbVersion);
+        return debugDirectory;
+    }
+
+    /// <summary>A stable identifier for one build's symbols.</summary>
+    private static Guid HashOf(MetadataBuilder pdbMetadata, string outputPath)
+    {
+        var counts = pdbMetadata.GetRowCounts();
+        var seed = new StringBuilder(Path.GetFileName(outputPath));
+
+        foreach (var count in counts)
+        {
+            seed.Append(';').Append(count);
+        }
+
+        var digest = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(seed.ToString()));
+        return new Guid(digest.AsSpan(0, 16));
     }
 
     /// <summary>
@@ -254,21 +364,25 @@ public sealed class IlEmitter
                 break;
 
             case VariableDeclaration declaration:
+                MarkPosition(declaration.Location);
                 Declare(declaration.Name, declaration.Initializer.Type);
                 EmitExpression(declaration.Initializer);
                 Store(declaration.Name);
                 break;
 
             case AssignmentStatement assignment:
+                MarkPosition(assignment.Location);
                 EmitExpression(assignment.Value);
                 Store(assignment.Name);
                 break;
 
             case PrintStatement print:
+                MarkPosition(print.Location);
                 EmitPrint(print);
                 break;
 
             case ReadStatement read:
+                MarkPosition(read.Location);
                 EmitRead(read);
                 break;
 
@@ -285,6 +399,8 @@ public sealed class IlEmitter
                 break;
 
             case ReturnStatement returned:
+                MarkPosition(returned.Location);
+
                 if (returned.Value is not null)
                 {
                     EmitExpression(returned.Value);
@@ -294,6 +410,7 @@ public sealed class IlEmitter
                 break;
 
             case CallStatement call:
+                MarkPosition(call.Location);
                 EmitCall(call.Call);
 
                 // The result of a call used as a statement is discarded.
@@ -305,10 +422,12 @@ public sealed class IlEmitter
                 break;
 
             case BreakStatement:
+                MarkPosition(statement.Location);
                 _il.Emit(OpCodes.Br, _loops.Peek().Break);
                 break;
 
             case ContinueStatement:
+                MarkPosition(statement.Location);
                 _il.Emit(OpCodes.Br, _loops.Peek().Continue);
                 break;
 
@@ -356,6 +475,7 @@ public sealed class IlEmitter
         var otherwise = _il.DefineLabel();
         var exit = _il.DefineLabel();
 
+        MarkPosition(conditional.Condition.Location);
         EmitExpression(conditional.Condition);
         _il.Emit(OpCodes.Brfalse, otherwise);
         EmitStatement(conditional.ThenBranch);
@@ -388,6 +508,7 @@ public sealed class IlEmitter
         _loops.Pop();
 
         _il.MarkLabel(test);
+        MarkPosition(loop.Condition.Location);
         EmitExpression(loop.Condition);
         _il.Emit(OpCodes.Brtrue, body);
         _il.MarkLabel(exit);
@@ -406,6 +527,7 @@ public sealed class IlEmitter
         var exit = _il.DefineLabel();
 
         // counter = from; bound = to  (the bound is evaluated exactly once)
+        MarkPosition(loop.From.Location.To(loop.To.Location));
         EmitExpression(loop.From);
         _il.Emit(OpCodes.Stloc, counter);
         EmitExpression(loop.To);
@@ -650,8 +772,18 @@ public sealed class IlEmitter
         _il.Emit(OpCodes.Call, _methods[call.Name]);
     }
 
-    private void Declare(string name, CacaType type) =>
-        _locals[name] = _il.DeclareLocal(type.ToClrType());
+    private void Declare(string name, CacaType type)
+    {
+        var local = _il.DeclareLocal(type.ToClrType());
+
+        // Without a name a debugger shows the variable as V_0.
+        if (_document is not null)
+        {
+            local.SetLocalSymInfo(name);
+        }
+
+        _locals[name] = local;
+    }
 
     /// <summary>Pushes a variable, which may be a local or one of the method's parameters.</summary>
     private void EmitLoad(string name)
