@@ -54,6 +54,12 @@ public sealed class IlEmitter
 
     private readonly Dictionary<string, LocalBuilder> _locals = new(StringComparer.Ordinal);
 
+    /// <summary>Parameters of the method being emitted, mapped to their argument index.</summary>
+    private readonly Dictionary<string, int> _parameters = new(StringComparer.Ordinal);
+
+    /// <summary>Every function in the program, so that a call can reference one.</summary>
+    private readonly IReadOnlyDictionary<string, MethodBuilder> _methods;
+
     /// <summary>
     /// The <c>break</c> and <c>continue</c> targets of the enclosing loops,
     /// innermost last.
@@ -62,7 +68,11 @@ public sealed class IlEmitter
 
     private readonly ILGenerator _il;
 
-    private IlEmitter(ILGenerator il) => _il = il;
+    private IlEmitter(ILGenerator il, IReadOnlyDictionary<string, MethodBuilder> methods)
+    {
+        _il = il;
+        _methods = methods;
+    }
 
     /// <summary>
     /// Writes <paramref name="program"/> to <paramref name="outputPath"/> as a
@@ -70,7 +80,10 @@ public sealed class IlEmitter
     /// host needs to launch it.
     /// </summary>
     /// <returns>The path of the generated runtime configuration file.</returns>
-    public static string EmitAssembly(BlockStatement program, string outputPath)
+    public static string EmitAssembly(
+        CompilationUnit unit,
+        IReadOnlyDictionary<string, FunctionSymbol> functions,
+        string outputPath)
     {
         var assemblyName = Path.GetFileNameWithoutExtension(outputPath);
 
@@ -83,20 +96,91 @@ public sealed class IlEmitter
         var module = builder.DefineDynamicModule(assemblyName);
         var programType = module.DefineType("Program", TypeAttributes.Public | TypeAttributes.Sealed);
 
+        // Every method is declared before any body is emitted, so a call can
+        // reference a function declared later in the file, or the one it is in.
+        var methods = DeclareMethods(programType, functions);
+
+        foreach (var (name, method) in methods)
+        {
+            var function = functions[name];
+            var emitter = new IlEmitter(method.GetILGenerator(), methods);
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                emitter._parameters[function.Parameters[i].Name] = i;
+            }
+
+            emitter.EmitStatement(function.Declaration.Body);
+            emitter.EmitDefaultReturn(function.ReturnType);
+        }
+
         var main = programType.DefineMethod(
             "Main",
             MethodAttributes.Public | MethodAttributes.Static,
             typeof(void),
             Type.EmptyTypes);
 
-        var emitter = new IlEmitter(main.GetILGenerator());
-        emitter.EmitStatement(program);
-        emitter._il.Emit(OpCodes.Ret);
+        var mainEmitter = new IlEmitter(main.GetILGenerator(), methods);
+        mainEmitter.EmitStatement(unit.TopLevel);
+        mainEmitter._il.Emit(OpCodes.Ret);
 
         programType.CreateType();
 
         WritePortableExecutable(builder, main, outputPath);
         return WriteRuntimeConfig(outputPath);
+    }
+
+    private static Dictionary<string, MethodBuilder> DeclareMethods(
+        TypeBuilder programType,
+        IReadOnlyDictionary<string, FunctionSymbol> functions)
+    {
+        var methods = new Dictionary<string, MethodBuilder>(StringComparer.Ordinal);
+
+        foreach (var (name, function) in functions)
+        {
+            var parameterTypes = function.Parameters.Select(p => p.Type.ToClrType()).ToArray();
+
+            var method = programType.DefineMethod(
+                name,
+                MethodAttributes.Public | MethodAttributes.Static,
+                function.ReturnType.ToClrType(),
+                parameterTypes);
+
+            // Named parameters make the emitted assembly readable in a decompiler.
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                method.DefineParameter(i + 1, ParameterAttributes.None, function.Parameters[i].Name);
+            }
+
+            methods[name] = method;
+        }
+
+        return methods;
+    }
+
+    /// <summary>
+    /// Closes a method body with a return.
+    /// </summary>
+    /// <remarks>
+    /// The type checker has already proved that a function owing a value
+    /// returns on every path, so for those this epilogue is unreachable. It is
+    /// emitted anyway because a method body must end in a valid instruction.
+    /// </remarks>
+    private void EmitDefaultReturn(CacaType returnType)
+    {
+        switch (returnType)
+        {
+            case CacaType.Int:
+            case CacaType.Bool:
+                _il.Emit(OpCodes.Ldc_I4_0);
+                break;
+
+            case CacaType.String:
+                _il.Emit(OpCodes.Ldnull);
+                break;
+        }
+
+        _il.Emit(OpCodes.Ret);
     }
 
     private static void WritePortableExecutable(
@@ -198,6 +282,26 @@ public sealed class IlEmitter
 
             case WhileStatement loop:
                 EmitWhile(loop);
+                break;
+
+            case ReturnStatement returned:
+                if (returned.Value is not null)
+                {
+                    EmitExpression(returned.Value);
+                }
+
+                _il.Emit(OpCodes.Ret);
+                break;
+
+            case CallStatement call:
+                EmitCall(call.Call);
+
+                // The result of a call used as a statement is discarded.
+                if (call.Call.Type != CacaType.Void)
+                {
+                    _il.Emit(OpCodes.Pop);
+                }
+
                 break;
 
             case BreakStatement:
@@ -358,7 +462,11 @@ public sealed class IlEmitter
                 break;
 
             case VariableExpression variable:
-                _il.Emit(OpCodes.Ldloc, _locals[variable.Name]);
+                EmitLoad(variable.Name);
+                break;
+
+            case CallExpression call:
+                EmitCall(call);
                 break;
 
             case UnaryExpression unary:
@@ -532,8 +640,39 @@ public sealed class IlEmitter
         }
     }
 
+    private void EmitCall(CallExpression call)
+    {
+        foreach (var argument in call.Arguments)
+        {
+            EmitExpression(argument);
+        }
+
+        _il.Emit(OpCodes.Call, _methods[call.Name]);
+    }
+
     private void Declare(string name, CacaType type) =>
         _locals[name] = _il.DeclareLocal(type.ToClrType());
 
-    private void Store(string name) => _il.Emit(OpCodes.Stloc, _locals[name]);
+    /// <summary>Pushes a variable, which may be a local or one of the method's parameters.</summary>
+    private void EmitLoad(string name)
+    {
+        if (_parameters.TryGetValue(name, out var index))
+        {
+            _il.Emit(OpCodes.Ldarg, index);
+            return;
+        }
+
+        _il.Emit(OpCodes.Ldloc, _locals[name]);
+    }
+
+    private void Store(string name)
+    {
+        if (_parameters.TryGetValue(name, out var index))
+        {
+            _il.Emit(OpCodes.Starg, index);
+            return;
+        }
+
+        _il.Emit(OpCodes.Stloc, _locals[name]);
+    }
 }

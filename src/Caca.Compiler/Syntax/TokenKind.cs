@@ -26,6 +26,8 @@ public enum TokenKind
     ContinueKeyword,
     TrueKeyword,
     FalseKeyword,
+    FuncKeyword,
+    ReturnKeyword,
 
     // Punctuation and operators
     Plus,
@@ -44,6 +46,8 @@ public enum TokenKind
     AmpersandAmpersand,
     PipePipe,
     Semicolon,
+    Colon,
+    Comma,
     OpenParen,
     CloseParen,
 }
@@ -73,6 +77,8 @@ public static class TokenKindExtensions
         TokenKind.ContinueKeyword => "'continue'",
         TokenKind.TrueKeyword => "'true'",
         TokenKind.FalseKeyword => "'false'",
+        TokenKind.FuncKeyword => "'func'",
+        TokenKind.ReturnKeyword => "'return'",
         TokenKind.Plus => "'+'",
         TokenKind.Minus => "'-'",
         TokenKind.Star => "'*'",
@@ -89,6 +95,8 @@ public static class TokenKindExtensions
         TokenKind.AmpersandAmpersand => "'&&'",
         TokenKind.PipePipe => "'||'",
         TokenKind.Semicolon => "';'",
+        TokenKind.Colon => "':'",
+        TokenKind.Comma => "','",
         TokenKind.OpenParen => "'('",
         TokenKind.CloseParen => "')'",
         _ => kind.ToString(),

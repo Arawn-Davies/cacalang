@@ -17,16 +17,139 @@ namespace Caca.Binding;
 public sealed class TypeChecker
 {
     private readonly DiagnosticBag _diagnostics;
-    private readonly Dictionary<string, CacaType> _symbols = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
+    private Dictionary<string, CacaType> _symbols = new(StringComparer.Ordinal);
+    private FunctionSymbol? _currentFunction;
     private int _loopDepth;
 
     private TypeChecker(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
 
-    /// <summary>Type-checks <paramref name="program"/> in place.</summary>
-    public static void Check(BlockStatement program, DiagnosticBag diagnostics)
+    /// <summary>Type-checks <paramref name="unit"/> in place.</summary>
+    /// <returns>The functions it declares, by name.</returns>
+    public static IReadOnlyDictionary<string, FunctionSymbol> Check(CompilationUnit unit, DiagnosticBag diagnostics)
     {
         var checker = new TypeChecker(diagnostics);
-        checker.CheckStatement(program);
+        checker.CheckCompilationUnit(unit);
+        return checker._functions;
+    }
+
+    private void CheckCompilationUnit(CompilationUnit unit)
+    {
+        // Signatures are collected before any body is checked, so a function
+        // may call one declared further down the file, or call itself.
+        foreach (var function in unit.Functions)
+        {
+            DeclareFunction(function);
+        }
+
+        foreach (var function in unit.Functions)
+        {
+            CheckFunctionBody(function);
+        }
+
+        // Top-level code has its own scope and cannot see a function's locals,
+        // nor a function the top-level variables.
+        _symbols = new Dictionary<string, CacaType>(StringComparer.Ordinal);
+        _currentFunction = null;
+        CheckStatement(unit.TopLevel);
+    }
+
+    private void DeclareFunction(FunctionDeclaration function)
+    {
+        var parameters = new List<(string Name, CacaType Type)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var parameter in function.Parameters)
+        {
+            var type = ResolveType(parameter.Type);
+
+            if (!seen.Add(parameter.Name))
+            {
+                _diagnostics.Report(
+                    DiagnosticCode.VariableAlreadyDeclared,
+                    parameter.Location,
+                    $"'{function.Name}' already has a parameter named '{parameter.Name}'");
+            }
+
+            parameters.Add((parameter.Name, type));
+        }
+
+        var returnType = function.ReturnType is null ? CacaType.Void : ResolveType(function.ReturnType);
+        var symbol = new FunctionSymbol(function.Name, parameters, returnType, function);
+
+        if (!_functions.TryAdd(function.Name, symbol))
+        {
+            _diagnostics.Report(
+                DiagnosticCode.FunctionAlreadyDeclared,
+                function.Location,
+                $"a function named '{function.Name}' is already declared");
+        }
+    }
+
+    private void CheckFunctionBody(FunctionDeclaration function)
+    {
+        if (!_functions.TryGetValue(function.Name, out var symbol) || symbol.Declaration != function)
+        {
+            // A duplicate declaration; the first one owns the name.
+            return;
+        }
+
+        _symbols = new Dictionary<string, CacaType>(StringComparer.Ordinal);
+        _currentFunction = symbol;
+
+        foreach (var (name, type) in symbol.Parameters)
+        {
+            _symbols[name] = type;
+        }
+
+        CheckStatement(function.Body);
+
+        // Falling off the end of a function that owes a value is an error, not
+        // a silently returned zero.
+        if (symbol.ReturnType != CacaType.Void && !AlwaysReturns(function.Body))
+        {
+            _diagnostics.Report(
+                DiagnosticCode.NotAllPathsReturn,
+                function.Location,
+                $"'{function.Name}' must return a value of type {symbol.ReturnType.Describe()} " +
+                "on every path, but at least one path reaches the end without returning");
+        }
+    }
+
+    /// <summary>
+    /// Whether a statement returns on every path through it.
+    /// </summary>
+    /// <remarks>
+    /// Loops are deliberately not counted: proving that a loop always runs, and
+    /// always returns when it does, is more analysis than this needs.
+    /// </remarks>
+    private static bool AlwaysReturns(Statement statement) => statement switch
+    {
+        ReturnStatement => true,
+        BlockStatement block => block.Statements.Any(AlwaysReturns),
+        IfStatement conditional => conditional.ElseBranch is not null
+            && AlwaysReturns(conditional.ThenBranch)
+            && AlwaysReturns(conditional.ElseBranch),
+        _ => false,
+    };
+
+    private CacaType ResolveType(TypeReference reference)
+    {
+        var type = CacaTypeExtensions.Parse(reference.Name);
+
+        if (type is null)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.UnknownType,
+                reference.Location,
+                $"'{reference.Name}' is not a type; the types are int, string and bool");
+
+            reference.Type = CacaType.Error;
+            return CacaType.Error;
+        }
+
+        reference.Type = type.Value;
+        return type.Value;
     }
 
     private void CheckStatement(Statement statement)
@@ -50,7 +173,7 @@ public sealed class TypeChecker
                 break;
 
             case PrintStatement print:
-                CheckExpression(print.Expression);
+                RequireValue(print.Expression, "'print'");
                 break;
 
             case ReadStatement read:
@@ -79,6 +202,14 @@ public sealed class TypeChecker
                 _loopDepth--;
                 break;
 
+            case ReturnStatement returned:
+                CheckReturn(returned);
+                break;
+
+            case CallStatement call:
+                CheckExpression(call.Call);
+                break;
+
             case BreakStatement:
                 RequireInsideLoop(statement, "break");
                 break;
@@ -93,9 +224,87 @@ public sealed class TypeChecker
         }
     }
 
+    private void CheckReturn(ReturnStatement returned)
+    {
+        if (_currentFunction is null)
+        {
+            if (returned.Value is not null)
+            {
+                CheckExpression(returned.Value);
+            }
+
+            _diagnostics.Report(
+                DiagnosticCode.ReturnOutsideFunction,
+                returned.Location,
+                "'return' can only appear inside a function");
+            return;
+        }
+
+        var expected = _currentFunction.ReturnType;
+
+        if (returned.Value is null)
+        {
+            if (expected != CacaType.Void)
+            {
+                _diagnostics.Report(
+                    DiagnosticCode.TypeMismatch,
+                    returned.Location,
+                    $"'{_currentFunction.Name}' must return a value of type {expected.Describe()}");
+            }
+
+            return;
+        }
+
+        var actual = CheckExpression(returned.Value);
+
+        if (expected == CacaType.Void)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.TypeMismatch,
+                returned.Location,
+                $"'{_currentFunction.Name}' returns nothing, so 'return' cannot be given a value");
+            return;
+        }
+
+        if (actual != CacaType.Error && actual != expected)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.TypeMismatch,
+                returned.Location,
+                $"'{_currentFunction.Name}' returns {expected.Describe()}, " +
+                $"but this returns {actual.Describe()}");
+        }
+    }
+
     private void CheckDeclaration(VariableDeclaration declaration)
     {
         var type = CheckExpression(declaration.Initializer);
+
+        if (declaration.DeclaredType is not null)
+        {
+            var written = ResolveType(declaration.DeclaredType);
+
+            if (written != CacaType.Error && type != CacaType.Error && written != type)
+            {
+                _diagnostics.Report(
+                    DiagnosticCode.TypeMismatch,
+                    declaration.Location,
+                    $"'{declaration.Name}' is declared as {written.Describe()}, " +
+                    $"but its value is of type {type.Describe()}");
+            }
+
+            // The written type wins, so one mistake does not cascade.
+            type = written;
+        }
+        else if (type == CacaType.Void)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.NoValueProduced,
+                declaration.Initializer.Location,
+                $"'{declaration.Name}' cannot be initialized with an expression that produces no value");
+
+            type = CacaType.Error;
+        }
 
         if (_symbols.ContainsKey(declaration.Name))
         {
@@ -187,6 +396,24 @@ public sealed class TypeChecker
         }
     }
 
+    /// <summary>Checks an expression that is used for its value.</summary>
+    private CacaType RequireValue(Expression expression, string role)
+    {
+        var type = CheckExpression(expression);
+
+        if (type == CacaType.Void)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.NoValueProduced,
+                expression.Location,
+                $"{role} needs a value, but this expression produces none");
+
+            return CacaType.Error;
+        }
+
+        return type;
+    }
+
     private void RequireBool(Expression expression, string role)
     {
         var type = CheckExpression(expression);
@@ -235,6 +462,7 @@ public sealed class TypeChecker
             VariableExpression variable => CheckVariable(variable),
             UnaryExpression unary => CheckUnary(unary),
             BinaryExpression binary => CheckBinary(binary),
+            CallExpression call => CheckCall(call),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(expression), expression, $"unhandled expression {expression.GetType().Name}"),
         };
@@ -245,6 +473,54 @@ public sealed class TypeChecker
 
     private CacaType CheckVariable(VariableExpression variable) =>
         TryLookup(variable.Name, variable.Location, out var type) ? type : CacaType.Error;
+
+    private CacaType CheckCall(CallExpression call)
+    {
+        var argumentTypes = call.Arguments.Select(CheckExpression).ToArray();
+
+        if (!_functions.TryGetValue(call.Name, out var function))
+        {
+            _diagnostics.Report(
+                DiagnosticCode.UndeclaredFunction,
+                call.Location,
+                $"no function named '{call.Name}' is declared");
+
+            return CacaType.Error;
+        }
+
+        call.Target = function;
+
+        if (argumentTypes.Length != function.Parameters.Count)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.WrongArgumentCount,
+                call.Location,
+                $"'{function}' takes {Count(function.Parameters.Count)}, " +
+                $"but {argumentTypes.Length} were given");
+
+            return function.ReturnType;
+        }
+
+        for (var i = 0; i < argumentTypes.Length; i++)
+        {
+            var expected = function.Parameters[i].Type;
+            var actual = argumentTypes[i];
+
+            if (actual != CacaType.Error && expected != CacaType.Error && actual != expected)
+            {
+                _diagnostics.Report(
+                    DiagnosticCode.TypeMismatch,
+                    call.Arguments[i].Location,
+                    $"the parameter '{function.Parameters[i].Name}' of '{function.Name}' is of type " +
+                    $"{expected.Describe()}, but this argument is of type {actual.Describe()}");
+            }
+        }
+
+        return function.ReturnType;
+    }
+
+    private static string Count(int arguments) =>
+        arguments == 1 ? "1 argument" : $"{arguments} arguments";
 
     private CacaType CheckUnary(UnaryExpression unary)
     {

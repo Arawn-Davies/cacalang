@@ -6,16 +6,23 @@ language was forked from Good for Nothing; everything else is as specified in
 the original 2005 article, with the ambiguities resolved in favour of what the
 samples imply.
 
-<program>    := <stmt_list>
+<program>    := (<func_decl> | <stmt_list>)*                      ; functions (new)
 <stmt_list>  := <stmt> (';' <stmt>)* ';'?      ; a trailing ';' is optional (new)
 
-<stmt> := var <ident> = <expr>
+<func_decl>  := func <ident> '(' <params>? ')' (':' <type>)? do <stmt_list> end   ; (new)
+<params>     := <param> (',' <param>)*                           ; (new)
+<param>      := <ident> ':' <type>                               ; (new)
+<type>       := int | string | bool                              ; (new)
+
+<stmt> := var <ident> (':' <type>)? = <expr>            ; annotation (new)
         | <ident> = <expr>
         | for <ident> = <expr> to <expr> do <stmt_list> end
         | while <expr> do <stmt_list> end                        ; (new)
         | if <expr> then <stmt_list> <else_tail>? end            ; (new)
         | break                                                  ; (new)
         | continue                                               ; (new)
+        | return <expr>?                                         ; (new)
+        | <call>                                                 ; (new)
         | read_int <ident>
         | read_string <ident>
         | print <expr>
@@ -79,9 +86,25 @@ break / continue
   outside a loop is an error.
 
 Variables
-  Every variable must be declared with `var` before use, and takes the type of
-  its initializer. A variable cannot be redeclared, and cannot be assigned a
-  value of a different type. There is a single scope for the whole program.
+  Every variable must be declared with `var` before use. Its type is written,
+  as in `var x: int = 1`, or inferred from the initializer. A variable cannot
+  be redeclared, and cannot be assigned a value of a different type.
+
+Functions
+  A function may be called from anywhere in the file, including from above its
+  declaration and from itself, so recursion and mutual recursion both work.
+  Parameter types are always written; a function with no written return type
+  returns nothing and may only be called as a statement. A function that does
+  return a value must do so on every path.
+
+  Parameters are passed by value: assigning to one inside a function does not
+  affect the caller's variable.
+
+Scope
+  There are no globals. A function sees its own parameters and the variables it
+  declares, and nothing else; the top-level statements likewise have a scope of
+  their own. Within one of those scopes there is a single flat namespace, so a
+  variable declared inside a loop or an `if` remains visible after it.
 
 for
   Both bounds are ints and both are inclusive, so `for i = 1 to 3` runs three

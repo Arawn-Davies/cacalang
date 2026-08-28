@@ -9,6 +9,54 @@ public abstract class SyntaxNode(SourceLocation location)
     public SourceLocation Location { get; } = location;
 }
 
+/// <summary>An entire source file: its functions, and the statements at its top level.</summary>
+public sealed class CompilationUnit(
+    IReadOnlyList<FunctionDeclaration> functions,
+    BlockStatement topLevel,
+    SourceLocation location) : SyntaxNode(location)
+{
+    public IReadOnlyList<FunctionDeclaration> Functions { get; } = functions;
+
+    /// <summary>The statements outside any function, which become the entry point.</summary>
+    public BlockStatement TopLevel { get; } = topLevel;
+}
+
+/// <summary>A written type, such as the <c>int</c> in <c>var x: int = 1</c>.</summary>
+public sealed class TypeReference(string name, SourceLocation location) : SyntaxNode(location)
+{
+    public string Name { get; } = name;
+
+    /// <summary>The type this name refers to, resolved by the type checker.</summary>
+    public CacaType Type { get; internal set; } = CacaType.Error;
+}
+
+/// <summary><c>&lt;ident&gt; : &lt;type&gt;</c> in a parameter list.</summary>
+public sealed class ParameterDeclaration(string name, TypeReference type, SourceLocation location)
+    : SyntaxNode(location)
+{
+    public string Name { get; } = name;
+
+    public TypeReference Type { get; } = type;
+}
+
+/// <summary><c>func &lt;ident&gt; ( &lt;params&gt; ) (: &lt;type&gt;)? do &lt;stmts&gt; end</c></summary>
+public sealed class FunctionDeclaration(
+    string name,
+    IReadOnlyList<ParameterDeclaration> parameters,
+    TypeReference? returnType,
+    BlockStatement body,
+    SourceLocation location) : SyntaxNode(location)
+{
+    public string Name { get; } = name;
+
+    public IReadOnlyList<ParameterDeclaration> Parameters { get; } = parameters;
+
+    /// <summary>The declared return type, or <see langword="null"/> for a function that returns nothing.</summary>
+    public TypeReference? ReturnType { get; } = returnType;
+
+    public BlockStatement Body { get; } = body;
+}
+
 // ---------------------------------------------------------------- statements
 
 public abstract class Statement(SourceLocation location) : SyntaxNode(location);
@@ -28,10 +76,19 @@ public sealed class BlockStatement(IReadOnlyList<Statement> statements, SourceLo
 }
 
 /// <summary><c>var &lt;ident&gt; = &lt;expr&gt;</c></summary>
-public sealed class VariableDeclaration(string name, Expression initializer, SourceLocation location)
-    : Statement(location)
+public sealed class VariableDeclaration(
+    string name,
+    TypeReference? declaredType,
+    Expression initializer,
+    SourceLocation location) : Statement(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>
+    /// The written type, as in <c>var x: int = 1</c>, or <see langword="null"/>
+    /// when the type is inferred from the initializer.
+    /// </summary>
+    public TypeReference? DeclaredType { get; } = declaredType;
 
     public Expression Initializer { get; } = initializer;
 }
@@ -107,6 +164,19 @@ public sealed class WhileStatement(Expression condition, Statement body, SourceL
     public Statement Body { get; } = body;
 }
 
+/// <summary><c>return</c> or <c>return &lt;expr&gt;</c></summary>
+public sealed class ReturnStatement(Expression? value, SourceLocation location) : Statement(location)
+{
+    /// <summary>The returned expression, or <see langword="null"/> for a bare <c>return</c>.</summary>
+    public Expression? Value { get; } = value;
+}
+
+/// <summary>A call written as a statement, whose result is discarded.</summary>
+public sealed class CallStatement(CallExpression call, SourceLocation location) : Statement(location)
+{
+    public CallExpression Call { get; } = call;
+}
+
 /// <summary><c>break</c> — leaves the innermost enclosing loop.</summary>
 public sealed class BreakStatement(SourceLocation location) : Statement(location);
 
@@ -156,6 +226,20 @@ public sealed class LiteralExpression(object value, CacaType type, SourceLocatio
 public sealed class VariableExpression(string name, SourceLocation location) : Expression(location)
 {
     public string Name { get; } = name;
+}
+
+/// <summary><c>&lt;ident&gt; ( &lt;args&gt; )</c></summary>
+public sealed class CallExpression(
+    string name,
+    IReadOnlyList<Expression> arguments,
+    SourceLocation location) : Expression(location)
+{
+    public string Name { get; } = name;
+
+    public IReadOnlyList<Expression> Arguments { get; } = arguments;
+
+    /// <summary>The function this call resolved to, set by the type checker.</summary>
+    public Binding.FunctionSymbol? Target { get; internal set; }
 }
 
 /// <summary><c>( &lt;expr&gt; )</c> — retained so error locations cover the parentheses.</summary>

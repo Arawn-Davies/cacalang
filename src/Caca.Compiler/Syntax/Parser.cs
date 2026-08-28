@@ -26,10 +26,10 @@ public sealed class Parser
         _diagnostics = diagnostics;
     }
 
-    public static BlockStatement Parse(IReadOnlyList<Token> tokens, DiagnosticBag diagnostics)
+    public static CompilationUnit Parse(IReadOnlyList<Token> tokens, DiagnosticBag diagnostics)
     {
         var parser = new Parser(tokens, diagnostics);
-        return parser.ParseProgram();
+        return parser.ParseCompilationUnit();
     }
 
     private Token Current => Peek(0);
@@ -80,11 +80,83 @@ public sealed class Parser
         return new Token(kind, string.Empty, null, Current.Location);
     }
 
-    private BlockStatement ParseProgram()
+    /// <summary>
+    /// Parses a whole file: function declarations, which may appear anywhere at
+    /// the top level, and the statements between them.
+    /// </summary>
+    private CompilationUnit ParseCompilationUnit()
     {
-        var block = ParseStatements(TokenKind.EndOfFile);
-        Expect(TokenKind.EndOfFile);
-        return block;
+        var start = Current.Location;
+        var functions = new List<FunctionDeclaration>();
+        var statements = new List<Statement>();
+
+        while (Current.Kind != TokenKind.EndOfFile)
+        {
+            if (Current.Kind == TokenKind.FuncKeyword)
+            {
+                functions.Add(ParseFunction());
+                Match(TokenKind.Semicolon);
+                continue;
+            }
+
+            var before = _position;
+            var block = ParseStatements(TokenKind.FuncKeyword, TokenKind.EndOfFile);
+            statements.AddRange(block.Statements);
+
+            // Guarantee forward progress even when nothing could be parsed.
+            if (_position == before)
+            {
+                Advance();
+            }
+        }
+
+        var end = Expect(TokenKind.EndOfFile);
+        var location = start.To(end.Location);
+        return new CompilationUnit(functions, new BlockStatement(statements, location), location);
+    }
+
+    private FunctionDeclaration ParseFunction()
+    {
+        var keyword = Advance();
+        var name = Expect(TokenKind.Identifier, "after 'func'");
+        var parameters = ParseParameterList();
+
+        // A function with no written return type returns nothing.
+        var returnType = Match(TokenKind.Colon) ? ParseTypeReference() : null;
+
+        Expect(TokenKind.DoKeyword, "before the function body");
+        var body = ParseStatements(TokenKind.EndKeyword);
+        var end = Expect(TokenKind.EndKeyword, "to close the function body");
+
+        return new FunctionDeclaration(name.Text, parameters, returnType, body, keyword.Location.To(end.Location));
+    }
+
+    private List<ParameterDeclaration> ParseParameterList()
+    {
+        var parameters = new List<ParameterDeclaration>();
+        Expect(TokenKind.OpenParen, "to open the parameter list");
+
+        while (Current.Kind is not (TokenKind.CloseParen or TokenKind.EndOfFile))
+        {
+            var name = Expect(TokenKind.Identifier, "as a parameter name");
+            Expect(TokenKind.Colon, $"after the parameter '{name.Text}'");
+            var type = ParseTypeReference();
+            parameters.Add(new ParameterDeclaration(name.Text, type, name.Location.To(type.Location)));
+
+            if (!Match(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        Expect(TokenKind.CloseParen, "to close the parameter list");
+        return parameters;
+    }
+
+    private TypeReference ParseTypeReference()
+    {
+        var name = Expect(TokenKind.Identifier, "as a type name");
+        return new TypeReference(name.Text, name.Location);
     }
 
     private static bool Contains(TokenKind[] kinds, TokenKind kind) => Array.IndexOf(kinds, kind) >= 0;
@@ -133,6 +205,8 @@ public sealed class Parser
         TokenKind.WhileKeyword => ParseWhile(),
         TokenKind.BreakKeyword => ParseBreak(),
         TokenKind.ContinueKeyword => ParseContinue(),
+        TokenKind.ReturnKeyword => ParseReturn(),
+        TokenKind.Identifier when Peek(1).Kind == TokenKind.OpenParen => ParseCallStatement(),
         TokenKind.Identifier => ParseAssignment(),
         _ => ParseUnexpectedStatement(),
     };
@@ -163,9 +237,16 @@ public sealed class Parser
     {
         var keyword = Advance();
         var name = Expect(TokenKind.Identifier, "after 'var'");
+
+        // The type may be written, as in `var x: int = 1`, or left to be
+        // inferred from the initializer.
+        var declaredType = Match(TokenKind.Colon) ? ParseTypeReference() : null;
+
         Expect(TokenKind.Equals, $"after 'var {name.Text}'");
         var initializer = ParseExpression();
-        return new VariableDeclaration(name.Text, initializer, keyword.Location.To(initializer.Location));
+
+        return new VariableDeclaration(
+            name.Text, declaredType, initializer, keyword.Location.To(initializer.Location));
     }
 
     private Statement ParseAssignment()
@@ -243,6 +324,44 @@ public sealed class Parser
         var body = ParseStatements(TokenKind.EndKeyword);
         var end = Expect(TokenKind.EndKeyword, "to close the loop body");
         return new WhileStatement(condition, body, keyword.Location.To(end.Location));
+    }
+
+    private Statement ParseReturn()
+    {
+        var keyword = Advance();
+
+        // A bare `return;` ends a function that produces no value.
+        var value = Current.Kind is TokenKind.Semicolon or TokenKind.EndKeyword
+            or TokenKind.ElseKeyword or TokenKind.EndOfFile
+            ? null
+            : ParseExpression();
+
+        return new ReturnStatement(value, value is null ? keyword.Location : keyword.Location.To(value.Location));
+    }
+
+    private Statement ParseCallStatement()
+    {
+        var call = ParseCall(Advance());
+        return new CallStatement(call, call.Location);
+    }
+
+    private CallExpression ParseCall(Token name)
+    {
+        Expect(TokenKind.OpenParen, $"after '{name.Text}'");
+        var arguments = new List<Expression>();
+
+        while (Current.Kind is not (TokenKind.CloseParen or TokenKind.EndOfFile))
+        {
+            arguments.Add(ParseExpression());
+
+            if (!Match(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        var close = Expect(TokenKind.CloseParen, $"to close the arguments to '{name.Text}'");
+        return new CallExpression(name.Text, arguments, name.Location.To(close.Location));
     }
 
     private Statement ParseBreak() => new BreakStatement(Advance().Location);
@@ -346,6 +465,10 @@ public sealed class Parser
                 Advance();
                 return new LiteralExpression(
                     token.Kind == TokenKind.TrueKeyword, CacaType.Bool, token.Location);
+
+            case TokenKind.Identifier when Peek(1).Kind == TokenKind.OpenParen:
+                Advance();
+                return ParseCall(token);
 
             case TokenKind.Identifier:
                 Advance();

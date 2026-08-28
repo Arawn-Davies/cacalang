@@ -23,4 +23,11 @@ public enum DiagnosticCode
     LoopBoundMustBeInt = 11,
     LoopVariableMustBeInt = 12,
     NotInsideALoop = 13,
+    UnknownType = 14,
+    FunctionAlreadyDeclared = 15,
+    UndeclaredFunction = 16,
+    WrongArgumentCount = 17,
+    ReturnOutsideFunction = 18,
+    NotAllPathsReturn = 19,
+    NoValueProduced = 20,
 }

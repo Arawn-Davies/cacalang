@@ -32,6 +32,8 @@ public sealed class Lexer
         ["continue"] = TokenKind.ContinueKeyword,
         ["true"] = TokenKind.TrueKeyword,
         ["false"] = TokenKind.FalseKeyword,
+        ["func"] = TokenKind.FuncKeyword,
+        ["return"] = TokenKind.ReturnKeyword,
     };
 
     private readonly string _text;
@@ -141,6 +143,8 @@ public sealed class Lexer
             case '/': _position++; return TokenKind.Slash;
             case '%': _position++; return TokenKind.Percent;
             case ';': _position++; return TokenKind.Semicolon;
+            case ':': _position++; return TokenKind.Colon;
+            case ',': _position++; return TokenKind.Comma;
             case '(': _position++; return TokenKind.OpenParen;
             case ')': _position++; return TokenKind.CloseParen;
 

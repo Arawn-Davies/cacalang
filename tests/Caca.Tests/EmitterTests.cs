@@ -211,6 +211,89 @@ public class EmitterTests : IDisposable
             """));
     }
 
+    [Fact]
+    public void Emitted_functions_take_arguments_and_return_values()
+    {
+        Assert.Equal(TestHost.Lines("7"), Emit("""
+            func add(a: int, b: int): int do return a + b; end
+            print add(3, 4);
+            """));
+    }
+
+    [Fact]
+    public void Emitted_functions_recurse()
+    {
+        Assert.Equal(TestHost.Lines("120"), Emit("""
+            func factorial(n: int): int do
+                if n <= 1 then return 1; end;
+                return n * factorial(n - 1);
+            end
+            print factorial(5);
+            """));
+    }
+
+    [Fact]
+    public void Emitted_functions_recurse_mutually_regardless_of_declaration_order()
+    {
+        Assert.Equal(TestHost.Lines("true"), Emit("""
+            func isEven(n: int): bool do
+                if n == 0 then return true; end;
+                return isOdd(n - 1);
+            end
+            func isOdd(n: int): bool do
+                if n == 0 then return false; end;
+                return isEven(n - 1);
+            end
+            print isEven(10);
+            """));
+    }
+
+    [Fact]
+    public void Emitted_void_function_is_called_as_a_statement()
+    {
+        Assert.Equal(TestHost.Lines("hello, world"), Emit("""
+            func greet(name: string) do print "hello, " + name; end
+            greet("world");
+            """));
+    }
+
+    [Fact]
+    public void Emitted_function_may_assign_to_its_parameters()
+    {
+        // Writing to a parameter emits starg rather than stloc.
+        Assert.Equal(TestHost.Lines("20", "2"), Emit("""
+            func tenTimes(n: int): int do n = n * 10; return n; end
+            var x = 2;
+            print tenTimes(x);
+            print x;
+            """));
+    }
+
+    [Fact]
+    public void Emitted_function_returns_from_inside_a_loop()
+    {
+        Assert.Equal(TestHost.Lines("3"), Emit("""
+            func firstMultipleOfThree(limit: int): int do
+                for i = 1 to limit do
+                    if i % 3 == 0 then return i; end;
+                end;
+                return 0;
+            end
+            print firstMultipleOfThree(10);
+            """));
+    }
+
+    [Fact]
+    public void Emitted_result_of_a_call_used_as_a_statement_is_discarded()
+    {
+        // The value has to be popped, or the method body ends with a full stack
+        // and the runtime refuses to jit it.
+        Assert.Equal(TestHost.Lines("called"), Emit("""
+            func f(): int do print "called"; return 1; end
+            f();
+            """));
+    }
+
     /// <summary>
     /// The two backends must agree; this is the cheapest way to keep them from
     /// drifting apart as the language grows.
@@ -224,6 +307,9 @@ public class EmitterTests : IDisposable
     [InlineData("var n = 0; read_int n; if n % 2 == 0 then print \"even\"; else print \"odd\"; end;", "6\n")]
     [InlineData("var i = 1; while i <= 5 do if i == 3 then i = i + 1; continue; end; print i * i; i = i + 1; end;", "")]
     [InlineData("for i = 1 to 20 do if i > 4 then break; end; print i >= 2 && i <= 3; end;", "")]
+    [InlineData("func fib(n: int): int do if n < 2 then return n; end; return fib(n - 1) + fib(n - 2); end for i = 0 to 10 do print fib(i); end;", "")]
+    [InlineData("func label(n: int): string do if n % 2 == 0 then return \"even\"; else return \"odd\"; end; end for i = 1 to 4 do print i + \" is \" + label(i); end;", "")]
+    [InlineData("func shout(s: string) do print s + \"!\"; end var line = \"\"; read_string line; shout(line);", "hey\n")]
     public void Both_backends_produce_the_same_output(string source, string input)
     {
         Assert.Equal(TestHost.Run(source, input), Emit(source, input));

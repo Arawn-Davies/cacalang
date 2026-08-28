@@ -1,0 +1,43 @@
+// Functions, recursion and control flow: the sieve nobody asked for.
+
+func isDivisible(n: int, by: int): bool do
+    return n % by == 0;
+end
+
+func isPrime(n: int): bool do
+    if n < 2 then
+        return false;
+    end;
+
+    var factor = 2;
+    while factor * factor <= n do
+        if isDivisible(n, factor) then
+            return false;
+        end;
+        factor = factor + 1;
+    end;
+
+    return true;
+end
+
+func describe(n: int): string do
+    if isPrime(n) then
+        return n + " is prime";
+    else
+        return n + " is not prime";
+    end;
+end
+
+var limit: int = 0;
+print "Count primes up to what?";
+read_int limit;
+
+var found = 0;
+for n = 2 to limit do
+    if isPrime(n) then
+        found = found + 1;
+    end;
+end;
+
+print describe(limit);
+print "primes up to " + limit + ": " + found;

@@ -25,21 +25,42 @@ public sealed class Interpreter
         Normal,
         Break,
         Continue,
+        Return,
     }
 
-    private readonly Dictionary<string, object> _variables = new(StringComparer.Ordinal);
+    /// <summary>
+    /// How deep calls may nest before the interpreter gives up.
+    /// </summary>
+    /// <remarks>
+    /// Runaway recursion would otherwise overflow the CLR stack, which cannot
+    /// be caught and takes the whole process down. This turns it into an error
+    /// the program's author can read.
+    /// </remarks>
+    private const int MaxCallDepth = 2000;
+
+    private readonly IReadOnlyDictionary<string, FunctionSymbol> _functions;
     private readonly TextReader _input;
     private readonly TextWriter _output;
 
-    public Interpreter(TextReader? input = null, TextWriter? output = null)
+    /// <summary>The locals of the call in progress; each call gets its own.</summary>
+    private Dictionary<string, object> _variables = new(StringComparer.Ordinal);
+
+    private object? _returnValue;
+    private int _depth;
+
+    public Interpreter(
+        IReadOnlyDictionary<string, FunctionSymbol>? functions = null,
+        TextReader? input = null,
+        TextWriter? output = null)
     {
+        _functions = functions ?? new Dictionary<string, FunctionSymbol>();
         _input = input ?? Console.In;
         _output = output ?? Console.Out;
     }
 
     /// <summary>Runs a program that has already passed the type checker.</summary>
     /// <exception cref="CacaRuntimeException">The program failed while running.</exception>
-    public void Run(BlockStatement program) => Execute(program);
+    public void Run(CompilationUnit program) => Execute(program.TopLevel);
 
     private Flow Execute(Statement statement)
     {
@@ -88,6 +109,14 @@ public sealed class Interpreter
             case ForStatement loop:
                 return ExecuteFor(loop);
 
+            case ReturnStatement returned:
+                _returnValue = returned.Value is null ? null : Evaluate(returned.Value);
+                return Flow.Return;
+
+            case CallStatement call:
+                Evaluate(call.Call);
+                return Flow.Normal;
+
             case BreakStatement:
                 return Flow.Break;
 
@@ -104,9 +133,17 @@ public sealed class Interpreter
     {
         while ((bool)Evaluate(loop.Condition))
         {
-            if (Execute(loop.Body) == Flow.Break)
+            var flow = Execute(loop.Body);
+
+            if (flow == Flow.Break)
             {
                 break;
+            }
+
+            // A return travels on out through the loop.
+            if (flow == Flow.Return)
+            {
+                return flow;
             }
         }
 
@@ -129,10 +166,16 @@ public sealed class Interpreter
         while (true)
         {
             _variables[loop.Name] = i;
+            var flow = Execute(loop.Body);
 
-            if (Execute(loop.Body) == Flow.Break)
+            if (flow == Flow.Break)
             {
                 return Flow.Normal;
+            }
+
+            if (flow == Flow.Return)
+            {
+                return flow;
             }
 
             // The body may reassign the loop variable, so read it back before
@@ -173,9 +216,55 @@ public sealed class Interpreter
         VariableExpression variable => _variables[variable.Name],
         UnaryExpression unary => EvaluateUnary(unary),
         BinaryExpression binary => EvaluateBinary(binary),
+        CallExpression call => Invoke(call),
         _ => throw new ArgumentOutOfRangeException(
             nameof(expression), expression, $"unhandled expression {expression.GetType().Name}"),
     };
+
+    /// <summary>Calls a function, giving it a fresh set of locals.</summary>
+    private object Invoke(CallExpression call)
+    {
+        var function = call.Target ?? _functions[call.Name];
+
+        // Arguments are evaluated in the caller's scope, before it is swapped out.
+        var arguments = call.Arguments.Select(Evaluate).ToArray();
+
+        if (++_depth > MaxCallDepth)
+        {
+            _depth--;
+            throw new CacaRuntimeException(
+                $"call stack depth of {MaxCallDepth} exceeded; '{function.Name}' is most likely recursing forever");
+        }
+
+        var caller = _variables;
+        var frame = new Dictionary<string, object>(StringComparer.Ordinal);
+
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            frame[function.Parameters[i].Name] = arguments[i];
+        }
+
+        _variables = frame;
+        _returnValue = null;
+
+        try
+        {
+            Execute(function.Declaration.Body);
+
+            // The type checker has already proved that a function with a return
+            // type returns on every path.
+            return _returnValue ?? Nothing;
+        }
+        finally
+        {
+            _variables = caller;
+            _returnValue = null;
+            _depth--;
+        }
+    }
+
+    /// <summary>The value standing in for the result of a function that returns nothing.</summary>
+    private static readonly object Nothing = new();
 
     private object EvaluateUnary(UnaryExpression unary)
     {

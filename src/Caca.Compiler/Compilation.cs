@@ -12,10 +12,15 @@ namespace Caca;
 /// </summary>
 public sealed class Compilation
 {
-    private Compilation(string? fileName, BlockStatement program, DiagnosticBag diagnostics)
+    private Compilation(
+        string? fileName,
+        CompilationUnit program,
+        IReadOnlyDictionary<string, FunctionSymbol> functions,
+        DiagnosticBag diagnostics)
     {
         FileName = fileName;
         Program = program;
+        Functions = functions;
         Diagnostics = diagnostics;
     }
 
@@ -23,7 +28,10 @@ public sealed class Compilation
     public string? FileName { get; }
 
     /// <summary>The parsed and type-checked program.</summary>
-    public BlockStatement Program { get; }
+    public CompilationUnit Program { get; }
+
+    /// <summary>The functions the program declares, by name.</summary>
+    public IReadOnlyDictionary<string, FunctionSymbol> Functions { get; }
 
     public DiagnosticBag Diagnostics { get; }
 
@@ -38,12 +46,11 @@ public sealed class Compilation
 
         // Type checking assumes a well-formed tree, so it only runs once the
         // front end has produced one.
-        if (!diagnostics.HasErrors)
-        {
-            TypeChecker.Check(program, diagnostics);
-        }
+        var functions = diagnostics.HasErrors
+            ? new Dictionary<string, FunctionSymbol>()
+            : TypeChecker.Check(program, diagnostics);
 
-        return new Compilation(fileName, program, diagnostics);
+        return new Compilation(fileName, program, functions, diagnostics);
     }
 
     public static Compilation CreateFromFile(string path) =>
@@ -55,7 +62,7 @@ public sealed class Compilation
     public void Run(TextReader? input = null, TextWriter? output = null)
     {
         EnsureSucceeded();
-        new Interpreter(input, output).Run(Program);
+        new Interpreter(Functions, input, output).Run(Program);
     }
 
     /// <summary>Compiles the program to a .NET assembly at <paramref name="outputPath"/>.</summary>
@@ -64,7 +71,7 @@ public sealed class Compilation
     public (string AssemblyPath, string RuntimeConfigPath) Emit(string outputPath)
     {
         EnsureSucceeded();
-        var configPath = IlEmitter.EmitAssembly(Program, outputPath);
+        var configPath = IlEmitter.EmitAssembly(Program, Functions, outputPath);
         return (outputPath, configPath);
     }
 

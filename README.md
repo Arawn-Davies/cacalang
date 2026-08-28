@@ -59,11 +59,27 @@ host needs to launch it.
 ## Language
 
 ```
-var x = 2;
-var y = 4;
-var z = y / x;
-print z;
-print "that's it folks!";
+func isPrime(n: int): bool do
+    if n < 2 then
+        return false;
+    end;
+
+    var factor = 2;
+    while factor * factor <= n do
+        if n % factor == 0 then
+            return false;
+        end;
+        factor = factor + 1;
+    end;
+
+    return true;
+end
+
+for n = 2 to 30 do
+    if isPrime(n) then
+        print n + " is prime";
+    end;
+end;
 ```
 
 The full specification, including the semantics of each construct, is in
@@ -71,8 +87,9 @@ The full specification, including the semantics of each construct, is in
 
 | | |
 |---|---|
-| Types | `int` (32-bit signed), `string`, `bool` |
-| Statements | `var`, assignment, `if … then … else … end`, `for … to … do … end`, `while … do … end`, `break`, `continue`, `read_int`, `read_string`, `print` |
+| Types | `int` (32-bit signed), `string`, `bool`; written as `var x: int = 1` or inferred |
+| Functions | `func f(a: int): int do … end`, called from anywhere in the file, recursive and mutually recursive |
+| Statements | `var`, assignment, `if … then … else … end`, `for … to … do … end`, `while … do … end`, `break`, `continue`, `return`, `read_int`, `read_string`, `print` |
 | Arithmetic | `+ - * / %` with the usual precedence, left associative; unary `-` |
 | Comparison | `< <= > >= == !=`; `==` compares strings by content |
 | Logic | `&& \|\| !`, short-circuiting; conditions must be `bool`, with no integer truthiness |
@@ -85,7 +102,7 @@ The full specification, including the semantics of each construct, is in
 |---|---|---|
 | Lexer | `src/Caca.Compiler/Syntax/Lexer.cs` | Source text to tokens carrying source positions |
 | Parser | `src/Caca.Compiler/Syntax/Parser.cs` | Recursive descent, precedence climbing for expressions |
-| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` | Resolves the type of every expression and reports semantic errors |
+| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` | Collects function signatures, resolves the type of every expression, reports semantic errors |
 | Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`caca run`) |
 | IL emitter | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`caca build`) |
 
