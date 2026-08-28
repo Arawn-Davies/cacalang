@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Gfn</RootNamespace>
+    <AssemblyName>Gfn.Compiler</AssemblyName>
+    <Description>Scanner, parser, type checker, interpreter and IL emitter for the Good for Nothing language.</Description>
+  </PropertyGroup>
+
+</Project>

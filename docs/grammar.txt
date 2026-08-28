@@ -1,0 +1,67 @@
+Good for Nothing - language specification
+=========================================
+
+Written in a simple EBNF style. Constructs marked (new) were added when the
+compiler was modernised; everything else is as specified in the original 2005
+article, with the ambiguities resolved in favour of what the samples imply.
+
+<program>    := <stmt_list>
+<stmt_list>  := <stmt> (';' <stmt>)* ';'?      ; a trailing ';' is optional (new)
+
+<stmt> := var <ident> = <expr>
+        | <ident> = <expr>
+        | for <ident> = <expr> to <expr> do <stmt_list> end
+        | read_int <ident>
+        | read_string <ident>
+        | print <expr>
+
+<expr>           := <additive>
+<additive>       := <multiplicative> (('+' | '-') <multiplicative>)*
+<multiplicative> := <unary> (('*' | '/') <unary>)*
+<unary>          := ('+' | '-') <unary> | <primary>      ; unary operators (new)
+<primary>        := <int> | <string> | <ident> | '(' <expr> ')'   ; grouping (new)
+
+<ident>      := (<letter> | '_') (<letter> | <digit> | '_')*
+<int>        := <digit>+
+<digit>      := 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
+<string>       := '"' <string_elem>* '"'
+<string_elem>  := <any char other than '"', '\' or a newline> | <escape>
+<escape>       := '\' ('n' | 'r' | 't' | '0' | '\' | '"')     ; escapes (new)
+
+<comment>    := '//' <any char>* <newline>                     ; (new)
+              | '/*' <any char>* '*/'                          ; (new)
+
+Semantics
+---------
+
+Types
+  There are two types, int (32-bit, signed) and string. There are no implicit
+  conversions except in string concatenation, below.
+
+Operators
+  '+' '-' '*' '/' apply to two ints and produce an int. Multiplication and
+  division bind tighter than addition and subtraction, and all four are left
+  associative, so `10 - 2 - 3` is 5 and `10 / 2 * 5` is 25.
+  '+' also concatenates when either operand is a string; an int operand is
+  converted using the invariant culture. No other operator accepts a string.
+  Unary '-' negates an int. Division by zero is a runtime error.
+
+Variables
+  Every variable must be declared with `var` before use, and takes the type of
+  its initializer. A variable cannot be redeclared, and cannot be assigned a
+  value of a different type. There is a single scope for the whole program.
+
+for
+  Both bounds are ints and both are inclusive, so `for i = 1 to 3` runs three
+  times. The upper bound is evaluated once, before the first iteration. If the
+  loop variable has not been declared, the loop declares it as an int; it
+  remains visible after the loop ends. The body may assign to the loop
+  variable, which affects the following iteration.
+
+print
+  Writes the value followed by a newline, formatted with the invariant culture.
+
+read_int / read_string
+  Reads one line from standard input into an already-declared variable of the
+  matching type. Input that is not an integer is a runtime error.
