@@ -34,11 +34,16 @@ public class EmitterTests : IDisposable
         var compilation = Compilation.Create(source);
         Assert.True(compilation.Succeeded, string.Join(Environment.NewLine, compilation.FormatDiagnostics()));
 
-        var path = Path.Combine(_directory, $"{name}_{Guid.NewGuid():N}.dll");
-        var (assemblyPath, configPath) = compilation.Emit(path);
+        var path = Path.Combine(_directory, $"{name}_{Guid.NewGuid():N}.exe");
+
+        // These tests exercise the IL, so they skip the native launcher.
+        var result = compilation.Emit(path, withLauncher: false);
+        var assemblyPath = result.AssemblyPath;
 
         Assert.True(File.Exists(assemblyPath));
-        Assert.True(File.Exists(configPath), "the runtime configuration must be written next to the assembly");
+        Assert.True(
+            File.Exists(result.RuntimeConfigPath),
+            "the runtime configuration must be written next to the assembly");
 
         var context = new AssemblyLoadContext(name, isCollectible: true);
 
