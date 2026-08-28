@@ -31,8 +31,8 @@ jobs:
       - name: Test
         run: dotnet test --no-build --configuration Release --verbosity normal
 
-      - name: Compile and run a sample end to end
+      - name: Compile a sample and run the produced executable
         shell: bash
         run: |
-          dotnet run --project src/Caca.Cli --configuration Release --no-build -- build samples/helloworld.caca -o helloworld.dll
-          echo 7 | dotnet helloworld.dll
+          dotnet run --project src/Caca.Cli --configuration Release --no-build -- build samples/fizzbuzz.caca
+          echo 5 | ./fizzbuzz.exe

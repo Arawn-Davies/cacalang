@@ -37,11 +37,11 @@ Run a program directly with the interpreter:
 dotnet run --project src/Caca.Cli -- run samples/helloworld.caca
 ```
 
-Or compile it to a real .NET assembly and run that:
+Or compile it to an executable and run that:
 
 ```sh
-dotnet run --project src/Caca.Cli -- build samples/helloworld.caca -o helloworld.dll
-dotnet helloworld.dll
+dotnet run --project src/Caca.Cli -- build samples/helloworld.caca
+./helloworld.exe
 ```
 
 ### Command line
@@ -49,13 +49,26 @@ dotnet helloworld.dll
 ```
 caca repl                            Start an interactive prompt
 caca run <file.caca>                 Run a program with the interpreter
-caca build <file.caca> [-o <path>]   Compile a program to a .NET assembly
+caca build <file.caca> [-o <path>]   Compile a program to a runnable executable
 caca check <file.caca>               Report errors without running anything
 caca <file.caca>                     Shorthand for 'caca build'
 ```
 
-`build` writes the assembly together with the `.runtimeconfig.json` the .NET
-host needs to launch it.
+`caca build hello.caca` writes three files:
+
+| File | What it is |
+|---|---|
+| `hello.exe` | A native launcher you run directly, on Windows, macOS and Linux alike |
+| `hello.dll` | The assembly holding the compiled IL |
+| `hello.runtimeconfig.json` | Which runtime the host should load |
+
+On .NET Framework an `.exe` *was* the assembly. On modern .NET an assembly is
+always a `.dll`, and the `.exe` beside it is a small native stub — an
+"apphost" — that finds the runtime and hands it the assembly. `caca build`
+produces that stub the same way `dotnet build` does, by taking the template
+that ships with the SDK and writing the assembly's name into it. The stub is
+built for the machine that produced it. `--no-launcher` skips it, leaving an
+assembly to run with `dotnet hello.dll`.
 
 ## Language
 
@@ -157,6 +170,7 @@ project is meant to be read.
 | Language server | `src/Caca.LanguageServer/` | Answers an editor's questions from those symbols |
 | Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`caca run`) |
 | IL emitter | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`caca build`) |
+| App host | `src/Caca.Compiler/Emit/AppHost.cs` | Turns the SDK's apphost template into a launcher for the emitted assembly |
 
 Errors are collected as diagnostics rather than thrown, so one run reports every
 problem it can find:

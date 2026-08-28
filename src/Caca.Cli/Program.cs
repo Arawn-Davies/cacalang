@@ -100,11 +100,16 @@ internal static class Program
     private static int Build(string[] args)
     {
         string? outputPath = null;
+        var withLauncher = true;
         var positional = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
         {
-            if (args[i] is "-o" or "--output")
+            if (args[i] is "--no-launcher")
+            {
+                withLauncher = false;
+            }
+            else if (args[i] is "-o" or "--output")
             {
                 if (i + 1 >= args.Length)
                 {
@@ -125,11 +130,31 @@ internal static class Program
             return status;
         }
 
-        outputPath ??= Path.ChangeExtension(Path.GetFileName(positional[0]), ".dll");
-        var (assemblyPath, configPath) = compilation.Emit(outputPath);
+        // The runnable file keeps the .exe name the language has always used,
+        // on every platform. The assembly beside it must be a .dll.
+        outputPath ??= Path.ChangeExtension(Path.GetFileName(positional[0]), ".exe");
+        var result = compilation.Emit(outputPath, withLauncher);
 
-        Console.WriteLine($"Compiled {compilation.FileName} to {assemblyPath}");
-        Console.WriteLine($"Wrote {Path.GetFileName(configPath)}; run it with: dotnet {assemblyPath}");
+        Console.WriteLine($"Compiled {compilation.FileName} to {result.AssemblyPath}");
+
+        if (result.Warning is not null)
+        {
+            Console.Error.WriteLine($"warning: {result.Warning}");
+        }
+
+        if (result.LauncherPath is not null)
+        {
+            var command = Path.IsPathRooted(result.LauncherPath)
+                ? result.LauncherPath
+                : Path.Combine(".", result.LauncherPath);
+
+            Console.WriteLine($"Wrote launcher {result.LauncherPath}; run it with: {command}");
+        }
+        else
+        {
+            Console.WriteLine($"Run it with: dotnet {result.AssemblyPath}");
+        }
+
         return ExitSuccess;
     }
 
@@ -176,17 +201,18 @@ internal static class Program
     private static void PrintUsage(TextWriter writer)
     {
         writer.WriteLine("""
-            caca - the Good for Nothing compiler
+            cacalang - a small language that compiles to .NET
 
             Usage:
               caca repl                            Start an interactive prompt
               caca run <file.caca>                 Run a program with the interpreter
-              caca build <file.caca> [-o <path>]   Compile a program to a .NET assembly
+              caca build <file.caca> [-o <path>]   Compile a program to a runnable executable
               caca check <file.caca>               Report errors without running anything
               caca <file.caca>                     Shorthand for 'caca build'
 
             Options:
-              -o, --output <path>   Where to write the assembly (default: <file>.dll)
+              -o, --output <path>   Where to write the executable (default: <file>.exe)
+                  --no-launcher     Emit only the assembly, to be run with 'dotnet'
               -h, --help            Show this help
                   --version         Show the compiler version
             """);
