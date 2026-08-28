@@ -34,5 +34,5 @@ jobs:
       - name: Compile and run a sample end to end
         shell: bash
         run: |
-          dotnet run --project src/Gfn.Cli --configuration Release --no-build -- build samples/helloworld.gfn -o helloworld.dll
+          dotnet run --project src/Caca.Cli --configuration Release --no-build -- build samples/helloworld.caca -o helloworld.dll
           echo 7 | dotnet helloworld.dll

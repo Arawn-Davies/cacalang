@@ -1,14 +1,26 @@
-# Good for Nothing Compiler
+# cacalang
 
-A small compiler for "Good for Nothing", a C-like toy language with variables,
-console I/O, arithmetic and a `for` loop.
+A small, C-like language with a compiler that both interprets programs and
+compiles them to real .NET assemblies. Builds and runs on Windows, macOS and
+Linux.
 
-This is a continuation of the Good for Nothing compiler presented by Joel Pobar
-and Joe Duffy at PDC 2005, published with
+```
+var ntimes = 0;
+print "How much do you love this company? (1-10) ";
+read_int ntimes;
+for x = 1 to ntimes do
+    print "Developers!";
+end;
+print "Who said sit down?!!!!!";
+```
+
+cacalang began as the Good for Nothing compiler that Joel Pobar and Joe Duffy
+presented at PDC 2005, published with
 [an article in MSDN Magazine](https://msdn.microsoft.com/en-us/magazine/cc136756.aspx).
-It has since been modernised: it builds and runs on Windows, macOS and Linux
-with the .NET 10 SDK, has a real type checker, reports errors with source
-positions, and ships with two backends and a test suite.
+That compiler targeted .NET Framework 2.0 and could only be built with Visual
+Studio on Windows. It has since been rebuilt on .NET 10, given a type checker,
+diagnostics with source positions, a second backend and a test suite, and it is
+now diverging into a language of its own.
 
 ## Getting started
 
@@ -22,23 +34,23 @@ dotnet test
 Run a program directly with the interpreter:
 
 ```sh
-dotnet run --project src/Gfn.Cli -- run samples/helloworld.gfn
+dotnet run --project src/Caca.Cli -- run samples/helloworld.caca
 ```
 
 Or compile it to a real .NET assembly and run that:
 
 ```sh
-dotnet run --project src/Gfn.Cli -- build samples/helloworld.gfn -o helloworld.dll
+dotnet run --project src/Caca.Cli -- build samples/helloworld.caca -o helloworld.dll
 dotnet helloworld.dll
 ```
 
 ### Command line
 
 ```
-gfn run <file.gfn>                 Run a program with the interpreter
-gfn build <file.gfn> [-o <path>]   Compile a program to a .NET assembly
-gfn check <file.gfn>               Report errors without running anything
-gfn <file.gfn>                     Shorthand for 'gfn build'
+caca run <file.caca>                 Run a program with the interpreter
+caca build <file.caca> [-o <path>]   Compile a program to a .NET assembly
+caca check <file.caca>               Report errors without running anything
+caca <file.caca>                     Shorthand for 'caca build'
 ```
 
 `build` writes the assembly together with the `.runtimeconfig.json` the .NET
@@ -52,16 +64,6 @@ var y = 4;
 var z = y / x;
 print z;
 print "that's it folks!";
-```
-
-```
-var ntimes = 0;
-print "How much do you love this company? (1-10) ";
-read_int ntimes;
-for x = 1 to ntimes do
-    print "Developers!";
-end;
-print "Who said sit down?!!!!!";
 ```
 
 The full specification, including the semantics of each construct, is in
@@ -79,26 +81,26 @@ The full specification, including the semantics of each construct, is in
 
 | Stage | Where | What it does |
 |---|---|---|
-| Lexer | `src/Gfn.Compiler/Syntax/Lexer.cs` | Source text to tokens carrying source positions |
-| Parser | `src/Gfn.Compiler/Syntax/Parser.cs` | Recursive descent, precedence climbing for expressions |
-| Type checker | `src/Gfn.Compiler/Binding/TypeChecker.cs` | Resolves the type of every expression and reports semantic errors |
-| Interpreter | `src/Gfn.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`gfn run`) |
-| IL emitter | `src/Gfn.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`gfn build`) |
+| Lexer | `src/Caca.Compiler/Syntax/Lexer.cs` | Source text to tokens carrying source positions |
+| Parser | `src/Caca.Compiler/Syntax/Parser.cs` | Recursive descent, precedence climbing for expressions |
+| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` | Resolves the type of every expression and reports semantic errors |
+| Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` | Walks the tree and executes it (`caca run`) |
+| IL emitter | `src/Caca.Compiler/Emit/IlEmitter.cs` | Writes a .NET assembly with `PersistedAssemblyBuilder` (`caca build`) |
 
 Errors are collected as diagnostics rather than thrown, so one run reports every
 problem it can find:
 
 ```
-$ gfn check broken.gfn
-broken.gfn(2,7): error GFN0010: operator '*' is not defined for types string and int
-broken.gfn(3,7): error GFN0008: 'y' is not declared; use 'var y = ...' before using it
+$ caca check broken.caca
+broken.caca(2,7): error CACA0010: operator '*' is not defined for types string and int
+broken.caca(3,7): error CACA0008: 'y' is not declared; use 'var y = ...' before using it
 2 errors.
 ```
 
 The two backends are expected to agree on every program, and the test suite
 asserts that directly.
 
-## What changed from the original
+## Where it came from
 
 The original targeted .NET Framework 2.0 and could only be built with Visual
 Studio on Windows.
@@ -128,7 +130,7 @@ all did the wrong thing:
 | `for i = 1 to 3` | `undeclared variable 'i'` | the loop declares `i` |
 
 **Diagnostics.** Every error now carries a file, line, column and a stable
-`GFN0001`-style code, instead of a bare sentence delivered as an unhandled
+`CACA0001`-style code, instead of a bare sentence delivered as an unhandled
 exception with a .NET stack trace.
 
 **Design.** The token stream was an `IList<object>` in which identifiers were

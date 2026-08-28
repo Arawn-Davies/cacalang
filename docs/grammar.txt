@@ -1,9 +1,10 @@
-Good for Nothing - language specification
-=========================================
+cacalang - language specification
+=================================
 
-Written in a simple EBNF style. Constructs marked (new) were added when the
-compiler was modernised; everything else is as specified in the original 2005
-article, with the ambiguities resolved in favour of what the samples imply.
+Written in a simple EBNF style. Constructs marked (new) were added after the
+language was forked from Good for Nothing; everything else is as specified in
+the original 2005 article, with the ambiguities resolved in favour of what the
+samples imply.
 
 <program>    := <stmt_list>
 <stmt_list>  := <stmt> (';' <stmt>)* ';'?      ; a trailing ';' is optional (new)
