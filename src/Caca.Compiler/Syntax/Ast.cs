@@ -31,10 +31,16 @@ public sealed class TypeReference(string name, SourceLocation location) : Syntax
 }
 
 /// <summary><c>&lt;ident&gt; : &lt;type&gt;</c> in a parameter list.</summary>
-public sealed class ParameterDeclaration(string name, TypeReference type, SourceLocation location)
-    : SyntaxNode(location)
+public sealed class ParameterDeclaration(
+    string name,
+    SourceLocation nameLocation,
+    TypeReference type,
+    SourceLocation location) : SyntaxNode(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     public TypeReference Type { get; } = type;
 }
@@ -42,12 +48,16 @@ public sealed class ParameterDeclaration(string name, TypeReference type, Source
 /// <summary><c>func &lt;ident&gt; ( &lt;params&gt; ) (: &lt;type&gt;)? do &lt;stmts&gt; end</c></summary>
 public sealed class FunctionDeclaration(
     string name,
+    SourceLocation nameLocation,
     IReadOnlyList<ParameterDeclaration> parameters,
     TypeReference? returnType,
     BlockStatement body,
     SourceLocation location) : SyntaxNode(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone, which is what a tool highlights.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     public IReadOnlyList<ParameterDeclaration> Parameters { get; } = parameters;
 
@@ -78,11 +88,15 @@ public sealed class BlockStatement(IReadOnlyList<Statement> statements, SourceLo
 /// <summary><c>var &lt;ident&gt; = &lt;expr&gt;</c></summary>
 public sealed class VariableDeclaration(
     string name,
+    SourceLocation nameLocation,
     TypeReference? declaredType,
     Expression initializer,
     SourceLocation location) : Statement(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     /// <summary>
     /// The written type, as in <c>var x: int = 1</c>, or <see langword="null"/>
@@ -94,10 +108,16 @@ public sealed class VariableDeclaration(
 }
 
 /// <summary><c>&lt;ident&gt; = &lt;expr&gt;</c></summary>
-public sealed class AssignmentStatement(string name, Expression value, SourceLocation location)
-    : Statement(location)
+public sealed class AssignmentStatement(
+    string name,
+    SourceLocation nameLocation,
+    Expression value,
+    SourceLocation location) : Statement(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     public Expression Value { get; } = value;
 }
@@ -109,9 +129,16 @@ public sealed class PrintStatement(Expression expression, SourceLocation locatio
 }
 
 /// <summary><c>read_int &lt;ident&gt;</c> and <c>read_string &lt;ident&gt;</c>.</summary>
-public sealed class ReadStatement(string name, CacaType type, SourceLocation location) : Statement(location)
+public sealed class ReadStatement(
+    string name,
+    SourceLocation nameLocation,
+    CacaType type,
+    SourceLocation location) : Statement(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     /// <summary>The type of value read: <see cref="CacaType.Int"/> or <see cref="CacaType.String"/>.</summary>
     public CacaType Type { get; } = type;
@@ -120,12 +147,16 @@ public sealed class ReadStatement(string name, CacaType type, SourceLocation loc
 /// <summary><c>for &lt;ident&gt; = &lt;expr&gt; to &lt;expr&gt; do &lt;stmt&gt; end</c></summary>
 public sealed class ForStatement(
     string name,
+    SourceLocation nameLocation,
     Expression from,
     Expression to,
     Statement body,
     SourceLocation location) : Statement(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     public Expression From { get; } = from;
 
@@ -231,10 +262,14 @@ public sealed class VariableExpression(string name, SourceLocation location) : E
 /// <summary><c>&lt;ident&gt; ( &lt;args&gt; )</c></summary>
 public sealed class CallExpression(
     string name,
+    SourceLocation nameLocation,
     IReadOnlyList<Expression> arguments,
     SourceLocation location) : Expression(location)
 {
     public string Name { get; } = name;
+
+    /// <summary>The extent of the name alone.</summary>
+    public SourceLocation NameLocation { get; } = nameLocation;
 
     public IReadOnlyList<Expression> Arguments { get; } = arguments;
 

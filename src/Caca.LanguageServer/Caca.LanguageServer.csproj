@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Caca.LanguageServer</RootNamespace>
+    <AssemblyName>caca-langserver</AssemblyName>
+    <Description>Language Server Protocol implementation for cacalang.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Caca.Compiler\Caca.Compiler.csproj" />
+  </ItemGroup>
+
+</Project>

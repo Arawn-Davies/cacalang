@@ -15,12 +15,12 @@ public sealed class Compilation
     private Compilation(
         string? fileName,
         CompilationUnit program,
-        IReadOnlyDictionary<string, FunctionSymbol> functions,
+        BindingResult binding,
         DiagnosticBag diagnostics)
     {
         FileName = fileName;
         Program = program;
-        Functions = functions;
+        Binding = binding;
         Diagnostics = diagnostics;
     }
 
@@ -30,8 +30,11 @@ public sealed class Compilation
     /// <summary>The parsed and type-checked program.</summary>
     public CompilationUnit Program { get; }
 
+    /// <summary>What the type checker learned: the functions, and every name it resolved.</summary>
+    public BindingResult Binding { get; }
+
     /// <summary>The functions the program declares, by name.</summary>
-    public IReadOnlyDictionary<string, FunctionSymbol> Functions { get; }
+    public IReadOnlyDictionary<string, FunctionSymbol> Functions => Binding.Functions;
 
     public DiagnosticBag Diagnostics { get; }
 
@@ -46,11 +49,11 @@ public sealed class Compilation
 
         // Type checking assumes a well-formed tree, so it only runs once the
         // front end has produced one.
-        var functions = diagnostics.HasErrors
-            ? new Dictionary<string, FunctionSymbol>()
+        var binding = diagnostics.HasErrors
+            ? BindingResult.Empty
             : TypeChecker.Check(program, diagnostics);
 
-        return new Compilation(fileName, program, functions, diagnostics);
+        return new Compilation(fileName, program, binding, diagnostics);
     }
 
     public static Compilation CreateFromFile(string path) =>
