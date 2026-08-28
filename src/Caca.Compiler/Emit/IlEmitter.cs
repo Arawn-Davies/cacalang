@@ -40,6 +40,12 @@ public sealed class IlEmitter
     /// <summary>The version of the portable PDB format written.</summary>
     private const ushort PortablePdbVersion = 0x0100;
 
+    /// <summary>
+    /// The generated float formatter. The angle brackets keep it from colliding
+    /// with any function a program could declare.
+    /// </summary>
+    private const string FloatFormatterName = "<>FormatFloat";
+
     private static readonly Guid LanguageGuid = new("ca6a1a19-cafe-4caa-9a1a-cacaca1a4caa");
 
     private static readonly MethodInfo ConsoleWriteLineString =
@@ -60,8 +66,20 @@ public sealed class IlEmitter
     private static readonly MethodInfo IntToStringInvariant =
         typeof(int).GetMethod(nameof(int.ToString), [typeof(IFormatProvider)])!;
 
+    private static readonly MethodInfo FloatToStringInvariant =
+        typeof(double).GetMethod(nameof(double.ToString), [typeof(IFormatProvider)])!;
+
+    private static readonly MethodInfo FloatIsFinite =
+        typeof(double).GetMethod(nameof(double.IsFinite), [typeof(double)])!;
+
+    private static readonly MethodInfo StringContainsChar =
+        typeof(string).GetMethod(nameof(string.Contains), [typeof(char)])!;
+
     private static readonly MethodInfo IntParseInvariant =
         typeof(int).GetMethod(nameof(int.Parse), [typeof(string), typeof(IFormatProvider)])!;
+
+    private static readonly MethodInfo FloatParseInvariant =
+        typeof(double).GetMethod(nameof(double.Parse), [typeof(string), typeof(IFormatProvider)])!;
 
     private static readonly MethodInfo InvariantCultureGetter =
         typeof(CultureInfo).GetProperty(nameof(CultureInfo.InvariantCulture))!.GetGetMethod()!;
@@ -85,14 +103,19 @@ public sealed class IlEmitter
     /// <summary>The source file, or null when no debugging information is wanted.</summary>
     private readonly ISymbolDocumentWriter? _document;
 
+    /// <summary>The generated method that renders a float as text.</summary>
+    private readonly MethodBuilder _floatFormatter;
+
     private IlEmitter(
         ILGenerator il,
         IReadOnlyDictionary<string, MethodBuilder> methods,
-        ISymbolDocumentWriter? document)
+        ISymbolDocumentWriter? document,
+        MethodBuilder floatFormatter)
     {
         _il = il;
         _methods = methods;
         _document = document;
+        _floatFormatter = floatFormatter;
     }
 
     /// <summary>
@@ -141,11 +164,12 @@ public sealed class IlEmitter
         // Every method is declared before any body is emitted, so a call can
         // reference a function declared later in the file, or the one it is in.
         var methods = DeclareMethods(programType, functions);
+        var floatFormatter = EmitFloatFormatter(programType);
 
         foreach (var (name, method) in methods)
         {
             var function = functions[name];
-            var emitter = new IlEmitter(method.GetILGenerator(), methods, document);
+            var emitter = new IlEmitter(method.GetILGenerator(), methods, document, floatFormatter);
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
@@ -162,7 +186,7 @@ public sealed class IlEmitter
             typeof(void),
             Type.EmptyTypes);
 
-        var mainEmitter = new IlEmitter(main.GetILGenerator(), methods, document);
+        var mainEmitter = new IlEmitter(main.GetILGenerator(), methods, document, floatFormatter);
         mainEmitter.EmitStatement(unit.TopLevel);
         mainEmitter._il.Emit(OpCodes.Ret);
 
@@ -170,6 +194,58 @@ public sealed class IlEmitter
 
         WritePortableExecutable(builder, main, outputPath, withDebugInfo: document is not null);
         return WriteRuntimeConfig(outputPath);
+    }
+
+    /// <summary>
+    /// Emits a method that renders a float exactly as the interpreter does.
+    /// </summary>
+    /// <remarks>
+    /// The rule is "the shortest round-trippable form, with a trailing .0 when
+    /// that form has neither a point nor an exponent", so that 1.0 prints as
+    /// "1.0" rather than as "1", which reads as an int. A compiled program
+    /// cannot call into this compiler, so the rule is emitted alongside it.
+    /// </remarks>
+    private static MethodBuilder EmitFloatFormatter(TypeBuilder programType)
+    {
+        var method = programType.DefineMethod(
+            FloatFormatterName,
+            MethodAttributes.Private | MethodAttributes.Static,
+            typeof(string),
+            [typeof(double)]);
+
+        var il = method.GetILGenerator();
+        var text = il.DeclareLocal(typeof(string));
+        var asIs = il.DefineLabel();
+
+        // text = value.ToString(CultureInfo.InvariantCulture)
+        il.Emit(OpCodes.Ldarga_S, (byte)0);
+        il.Emit(OpCodes.Call, InvariantCultureGetter);
+        il.Emit(OpCodes.Call, FloatToStringInvariant);
+        il.Emit(OpCodes.Stloc, text);
+
+        // Infinities and NaN are written as they are.
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Call, FloatIsFinite);
+        il.Emit(OpCodes.Brfalse, asIs);
+
+        foreach (var character in (char[])['.', 'E', 'e'])
+        {
+            il.Emit(OpCodes.Ldloc, text);
+            il.Emit(OpCodes.Ldc_I4, character);
+            il.Emit(OpCodes.Call, StringContainsChar);
+            il.Emit(OpCodes.Brtrue, asIs);
+        }
+
+        il.Emit(OpCodes.Ldloc, text);
+        il.Emit(OpCodes.Ldstr, ".0");
+        il.Emit(OpCodes.Call, StringConcat);
+        il.Emit(OpCodes.Ret);
+
+        il.MarkLabel(asIs);
+        il.Emit(OpCodes.Ldloc, text);
+        il.Emit(OpCodes.Ret);
+
+        return method;
     }
 
     private static Dictionary<string, MethodBuilder> DeclareMethods(
@@ -215,6 +291,10 @@ public sealed class IlEmitter
             case CacaType.Int:
             case CacaType.Bool:
                 _il.Emit(OpCodes.Ldc_I4_0);
+                break;
+
+            case CacaType.Float:
+                _il.Emit(OpCodes.Ldc_R8, 0d);
                 break;
 
             case CacaType.String:
@@ -439,7 +519,9 @@ public sealed class IlEmitter
 
     private void EmitPrint(PrintStatement print)
     {
-        if (print.Expression.Type == CacaType.Bool)
+        // Console.WriteLine(double) formats differently from this language, and
+        // WriteLine(bool) writes "True", so both go through the text form.
+        if (print.Expression.EffectiveType is CacaType.Bool or CacaType.Float)
         {
             EmitAsString(print.Expression);
             _il.Emit(OpCodes.Call, ConsoleWriteLineString);
@@ -452,19 +534,19 @@ public sealed class IlEmitter
         // int and calling object.ToString on it.
         _il.Emit(
             OpCodes.Call,
-            print.Expression.Type == CacaType.Int ? ConsoleWriteLineInt : ConsoleWriteLineString);
+            print.Expression.EffectiveType == CacaType.Int ? ConsoleWriteLineInt : ConsoleWriteLineString);
     }
 
     private void EmitRead(ReadStatement read)
     {
         _il.Emit(OpCodes.Call, ConsoleReadLine);
 
-        if (read.Type == CacaType.Int)
+        if (read.Type is CacaType.Int or CacaType.Float)
         {
             // Parse with the invariant culture so a program behaves the same
             // way regardless of the machine's regional settings.
             _il.Emit(OpCodes.Call, InvariantCultureGetter);
-            _il.Emit(OpCodes.Call, IntParseInvariant);
+            _il.Emit(OpCodes.Call, read.Type == CacaType.Int ? IntParseInvariant : FloatParseInvariant);
         }
 
         Store(read.Name);
@@ -565,6 +647,18 @@ public sealed class IlEmitter
 
     private void EmitExpression(Expression expression)
     {
+        EmitExpressionCore(expression);
+
+        // An int used where a float is wanted is converted here, once, exactly
+        // where the type checker said it should be.
+        if (expression.ConvertedTo == CacaType.Float && expression.Type == CacaType.Int)
+        {
+            _il.Emit(OpCodes.Conv_R8);
+        }
+    }
+
+    private void EmitExpressionCore(Expression expression)
+    {
         switch (expression)
         {
             case LiteralExpression literal when literal.LiteralType == CacaType.Int:
@@ -573,6 +667,10 @@ public sealed class IlEmitter
 
             case LiteralExpression literal when literal.LiteralType == CacaType.Bool:
                 _il.Emit(literal.BoolValue ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+                break;
+
+            case LiteralExpression literal when literal.LiteralType == CacaType.Float:
+                _il.Emit(OpCodes.Ldc_R8, literal.FloatValue);
                 break;
 
             case LiteralExpression literal:
@@ -597,6 +695,7 @@ public sealed class IlEmitter
                 switch (unary.Operator)
                 {
                     case UnaryOperator.Negate:
+                        // neg works for both integers and floats.
                         _il.Emit(OpCodes.Neg);
                         break;
 
@@ -669,7 +768,9 @@ public sealed class IlEmitter
                 return;
 
             // The CLR has clt and cgt but no cle or cge, so the inclusive forms
-            // are the strict opposite, negated.
+            // are the strict opposite, negated. For floats the opposite has to
+            // be the unordered comparison, or every comparison against NaN
+            // would come out true.
             case BinaryOperator.Less:
                 _il.Emit(OpCodes.Clt);
                 return;
@@ -677,11 +778,11 @@ public sealed class IlEmitter
                 _il.Emit(OpCodes.Cgt);
                 return;
             case BinaryOperator.LessOrEqual:
-                _il.Emit(OpCodes.Cgt);
+                _il.Emit(IsFloatComparison(binary) ? OpCodes.Cgt_Un : OpCodes.Cgt);
                 EmitNegate();
                 return;
             case BinaryOperator.GreaterOrEqual:
-                _il.Emit(OpCodes.Clt);
+                _il.Emit(IsFloatComparison(binary) ? OpCodes.Clt_Un : OpCodes.Clt);
                 EmitNegate();
                 return;
 
@@ -690,11 +791,15 @@ public sealed class IlEmitter
         }
     }
 
+    /// <summary>Whether an operator's operands reach the stack as floats.</summary>
+    private static bool IsFloatComparison(BinaryExpression binary) =>
+        binary.Left.EffectiveType == CacaType.Float || binary.Right.EffectiveType == CacaType.Float;
+
     /// <summary>Compares the two values already on the stack.</summary>
     private void EmitEquality(BinaryExpression binary)
     {
         // Reference equality is not what `==` means for strings.
-        if (binary.Left.Type == CacaType.String)
+        if (binary.Left.EffectiveType == CacaType.String)
         {
             _il.Emit(OpCodes.Call, StringEquals);
             return;
@@ -736,8 +841,12 @@ public sealed class IlEmitter
     {
         EmitExpression(expression);
 
-        switch (expression.Type)
+        switch (expression.EffectiveType)
         {
+            case CacaType.Float:
+                _il.Emit(OpCodes.Call, _floatFormatter);
+                break;
+
             case CacaType.Int:
                 // int.ToString needs a managed reference to the value, so spill
                 // it to a temporary first.

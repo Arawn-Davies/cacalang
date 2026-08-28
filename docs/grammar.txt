@@ -12,7 +12,7 @@ samples imply.
 <func_decl>  := func <ident> '(' <params>? ')' (':' <type>)? do <stmt_list> end   ; (new)
 <params>     := <param> (',' <param>)*                           ; (new)
 <param>      := <ident> ':' <type>                               ; (new)
-<type>       := int | string | bool                              ; (new)
+<type>       := int | float | string | bool                      ; (new)
 
 <stmt> := var <ident> (':' <type>)? = <expr>            ; annotation (new)
         | <ident> = <expr>
@@ -25,6 +25,7 @@ samples imply.
         | <call>                                                 ; (new)
         | read_int <ident>
         | read_string <ident>
+        | read_float <ident>                                     ; (new)
         | print <expr>
 
 <else_tail> := else <stmt_list>                                  ; (new)
@@ -45,6 +46,7 @@ samples imply.
 
 <ident>      := (<letter> | '_') (<letter> | <digit> | '_')*
 <int>        := <digit>+
+<float>      := <digit>+ '.' <digit>+                            ; (new)
 <digit>      := 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 <string>       := '"' <string_elem>* '"'
@@ -58,19 +60,35 @@ Semantics
 ---------
 
 Types
-  There are three types: int (32-bit, signed), string and bool. There are no
-  implicit conversions except in string concatenation, below.
+  There are four types: int (32-bit, signed), float, string and bool.
+
+  float is a 64-bit IEEE 754 binary floating point number. There is one
+  floating point type rather than a separate single and double precision pair,
+  because two of them buy a conversion matrix and very little else.
+
+  An int converts to a float wherever one is expected: in an operation mixing
+  the two, in an assignment, in an argument and in a return. Every int is
+  exactly representable as a float, so nothing is lost. Nothing converts the
+  other way, because that would lose information silently.
+
+  A float literal needs digits on both sides of its point, so `1.0` is a float
+  and `1` is an int. In `1.` the dot is not part of the number.
 
 Operators
-  '+' '-' '*' '/' apply to two ints and produce an int. Multiplication and
-  division bind tighter than addition and subtraction, and all four are left
-  associative, so `10 - 2 - 3` is 5 and `10 / 2 * 5` is 25.
+  '+' '-' '*' '/' '%' apply to two numbers. If both are ints the result is an
+  int; if either is a float, the other is widened and the result is a float.
+  So `7 / 2` is 3 and `7 / 2.0` is 3.5. Multiplication, division and remainder
+  bind tighter than addition and subtraction, and all are left associative, so
+  `10 - 2 - 3` is 5 and `10 / 2 * 5` is 25.
   '+' also concatenates when either operand is a string; an int or bool operand
   is converted, ints using the invariant culture and bools as "true"/"false".
-  No other arithmetic operator accepts a string. Unary '-' negates an int.
-  Division and remainder by zero are runtime errors.
+  No other arithmetic operator accepts a string. Unary '-' negates a number.
 
-  '<' '<=' '>' '>=' compare two ints and produce a bool.
+  Integer division and remainder by zero are runtime errors. Float division by
+  zero is not: IEEE 754 defines the answer, and it is an infinity or, for 0/0,
+  a NaN. A NaN compares false against everything, itself included.
+
+  '<' '<=' '>' '>=' compare two numbers and produce a bool.
   '==' and '!=' compare two values of the same type, including strings, which
   are compared by their contents rather than by reference.
   '&&' and '||' take two bools and evaluate their right operand only when the
@@ -113,9 +131,14 @@ for
   remains visible after the loop ends. The body may assign to the loop
   variable, which affects the following iteration.
 
-print
-  Writes the value followed by a newline, formatted with the invariant culture.
-
-read_int / read_string
+read_int / read_float / read_string
   Reads one line from standard input into an already-declared variable of the
-  matching type. Input that is not an integer is a runtime error.
+  matching type. Input that is not a number is a runtime error. Numbers are
+  read, and written, using the invariant culture, so a program behaves the same
+  way regardless of the machine's regional settings.
+
+print
+  A float is written in the shortest form that reads back as the same value,
+  with a trailing ".0" when that form has neither a point nor an exponent, so
+  that a float never looks like an int. Infinities and NaN are written as
+  "Infinity", "-Infinity" and "NaN".

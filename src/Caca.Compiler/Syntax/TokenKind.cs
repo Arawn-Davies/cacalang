@@ -7,6 +7,7 @@ public enum TokenKind
     // Literals and names
     Identifier,
     IntLiteral,
+    FloatLiteral,
     StringLiteral,
 
     // Keywords
@@ -18,6 +19,7 @@ public enum TokenKind
     PrintKeyword,
     ReadIntKeyword,
     ReadStringKeyword,
+    ReadFloatKeyword,
     IfKeyword,
     ThenKeyword,
     ElseKeyword,
@@ -60,6 +62,7 @@ public static class TokenKindExtensions
         TokenKind.EndOfFile => "end of file",
         TokenKind.Identifier => "an identifier",
         TokenKind.IntLiteral => "an integer literal",
+        TokenKind.FloatLiteral => "a floating point literal",
         TokenKind.StringLiteral => "a string literal",
         TokenKind.VarKeyword => "'var'",
         TokenKind.ForKeyword => "'for'",
@@ -69,6 +72,7 @@ public static class TokenKindExtensions
         TokenKind.PrintKeyword => "'print'",
         TokenKind.ReadIntKeyword => "'read_int'",
         TokenKind.ReadStringKeyword => "'read_string'",
+        TokenKind.ReadFloatKeyword => "'read_float'",
         TokenKind.IfKeyword => "'if'",
         TokenKind.ThenKeyword => "'then'",
         TokenKind.ElseKeyword => "'else'",

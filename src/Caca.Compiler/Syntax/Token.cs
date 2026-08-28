@@ -17,6 +17,8 @@ public readonly record struct Token(TokenKind Kind, string Text, object? Value, 
 
     public string StringValue => (string)(Value ?? string.Empty);
 
+    public double FloatValue => (double)(Value ?? 0d);
+
     public override string ToString() => Kind switch
     {
         TokenKind.EndOfFile => "end of file",

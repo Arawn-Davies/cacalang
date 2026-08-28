@@ -45,6 +45,30 @@ public sealed class TypeChecker
     private void Reference(SourceLocation location, ISymbol symbol, bool isDefinition = false) =>
         _references.Add(new SymbolReference(location, symbol, isDefinition));
 
+    /// <summary>
+    /// Records that an expression's value is widened to <paramref name="target"/>,
+    /// and reports whether it is usable there at all.
+    /// </summary>
+    private static bool Accepts(Expression expression, CacaType target)
+    {
+        if (expression.Type == CacaType.Error || target == CacaType.Error)
+        {
+            return true;
+        }
+
+        if (!expression.Type.ConvertsTo(target))
+        {
+            return false;
+        }
+
+        if (expression.Type != target)
+        {
+            expression.ConvertedTo = target;
+        }
+
+        return true;
+    }
+
     private void CheckCompilationUnit(CompilationUnit unit)
     {
         // Signatures are collected before any body is checked, so a function
@@ -287,7 +311,7 @@ public sealed class TypeChecker
             return;
         }
 
-        if (actual != CacaType.Error && actual != expected)
+        if (!Accepts(returned.Value, expected))
         {
             _diagnostics.Report(
                 DiagnosticCode.TypeMismatch,
@@ -305,7 +329,7 @@ public sealed class TypeChecker
         {
             var written = ResolveType(declaration.DeclaredType);
 
-            if (written != CacaType.Error && type != CacaType.Error && written != type)
+            if (!Accepts(declaration.Initializer, written))
             {
                 _diagnostics.Report(
                     DiagnosticCode.TypeMismatch,
@@ -354,7 +378,7 @@ public sealed class TypeChecker
 
         var declaredType = symbol.Type;
 
-        if (valueType != CacaType.Error && declaredType != CacaType.Error && valueType != declaredType)
+        if (!Accepts(assignment.Value, declaredType))
         {
             _diagnostics.Report(
                 DiagnosticCode.TypeMismatch,
@@ -375,7 +399,12 @@ public sealed class TypeChecker
 
         if (declaredType != CacaType.Error && declaredType != read.Type)
         {
-            var keyword = read.Type == CacaType.Int ? "read_int" : "read_string";
+            var keyword = read.Type switch
+            {
+                CacaType.Int => "read_int",
+                CacaType.Float => "read_float",
+                _ => "read_string",
+            };
             _diagnostics.Report(
                 DiagnosticCode.TypeMismatch,
                 read.Location,
@@ -542,7 +571,7 @@ public sealed class TypeChecker
             var expected = function.Parameters[i].Type;
             var actual = argumentTypes[i];
 
-            if (actual != CacaType.Error && expected != CacaType.Error && actual != expected)
+            if (!Accepts(call.Arguments[i], expected))
             {
                 _diagnostics.Report(
                     DiagnosticCode.TypeMismatch,
@@ -561,11 +590,22 @@ public sealed class TypeChecker
     private CacaType CheckUnary(UnaryExpression unary)
     {
         var operandType = CheckExpression(unary.Operand);
-        var expected = unary.Operator == UnaryOperator.Not ? CacaType.Bool : CacaType.Int;
 
-        if (operandType == CacaType.Error || operandType == expected)
+        if (operandType == CacaType.Error)
         {
-            return expected;
+            return CacaType.Error;
+        }
+
+        if (unary.Operator == UnaryOperator.Not)
+        {
+            if (operandType == CacaType.Bool)
+            {
+                return CacaType.Bool;
+            }
+        }
+        else if (operandType.IsNumeric())
+        {
+            return operandType;
         }
 
         _diagnostics.Report(
@@ -588,47 +628,63 @@ public sealed class TypeChecker
 
         var result = ResultOf(binary.Operator, left, right);
 
-        if (result is not null)
+        if (result is null)
         {
-            return result.Value;
+            _diagnostics.Report(
+                DiagnosticCode.OperatorNotDefined,
+                binary.Location,
+                $"operator '{binary.Operator.Describe()}' is not defined for types " +
+                $"{left.Describe()} and {right.Describe()}");
+
+            return CacaType.Error;
         }
 
-        _diagnostics.Report(
-            DiagnosticCode.OperatorNotDefined,
-            binary.Location,
-            $"operator '{binary.Operator.Describe()}' is not defined for types " +
-            $"{left.Describe()} and {right.Describe()}");
+        // Mixing an int with a float widens the int, so both sides of the
+        // operation are of one type by the time either backend sees them.
+        if (left.IsNumeric() && right.IsNumeric() && left != right)
+        {
+            Accepts(binary.Left, CacaType.Float);
+            Accepts(binary.Right, CacaType.Float);
+        }
 
-        return CacaType.Error;
+        return result.Value;
     }
 
     /// <summary>
     /// The type an operator produces for a pair of operand types, or
     /// <see langword="null"/> if it does not accept them.
     /// </summary>
-    private static CacaType? ResultOf(BinaryOperator op, CacaType left, CacaType right) => op switch
+    private static CacaType? ResultOf(BinaryOperator op, CacaType left, CacaType right)
     {
-        // '+' doubles as string concatenation, and concatenating a string with
-        // another type converts that operand. Every other arithmetic operator
-        // is defined on ints alone, rather than, as before, silently emitting
-        // unverifiable IL.
-        BinaryOperator.Add when left == CacaType.String || right == CacaType.String => CacaType.String,
+        // An operation on an int and a float is carried out in float.
+        var numeric = left.IsNumeric() && right.IsNumeric();
+        var common = left == right ? left : CacaType.Float;
 
-        BinaryOperator.Add or BinaryOperator.Subtract or BinaryOperator.Multiply
-            or BinaryOperator.Divide or BinaryOperator.Modulo =>
-            left == CacaType.Int && right == CacaType.Int ? CacaType.Int : null,
+        return op switch
+        {
+            // '+' doubles as string concatenation, and concatenating a string
+            // with another type converts that operand. Every other arithmetic
+            // operator is defined on numbers alone, rather than, as before,
+            // silently emitting unverifiable IL.
+            BinaryOperator.Add when left == CacaType.String || right == CacaType.String => CacaType.String,
 
-        // Ordering compares ints; equality compares any two values of one type.
-        BinaryOperator.Less or BinaryOperator.LessOrEqual
-            or BinaryOperator.Greater or BinaryOperator.GreaterOrEqual =>
-            left == CacaType.Int && right == CacaType.Int ? CacaType.Bool : null,
+            BinaryOperator.Add or BinaryOperator.Subtract or BinaryOperator.Multiply
+                or BinaryOperator.Divide or BinaryOperator.Modulo =>
+                numeric ? common : null,
 
-        BinaryOperator.Equal or BinaryOperator.NotEqual =>
-            left == right ? CacaType.Bool : null,
+            // Ordering compares numbers; equality compares any two values of
+            // one type, or any two numbers.
+            BinaryOperator.Less or BinaryOperator.LessOrEqual
+                or BinaryOperator.Greater or BinaryOperator.GreaterOrEqual =>
+                numeric ? CacaType.Bool : null,
 
-        BinaryOperator.LogicalAnd or BinaryOperator.LogicalOr =>
-            left == CacaType.Bool && right == CacaType.Bool ? CacaType.Bool : null,
+            BinaryOperator.Equal or BinaryOperator.NotEqual =>
+                numeric || left == right ? CacaType.Bool : null,
 
-        _ => null,
-    };
+            BinaryOperator.LogicalAnd or BinaryOperator.LogicalOr =>
+                left == CacaType.Bool && right == CacaType.Bool ? CacaType.Bool : null,
+
+            _ => null,
+        };
+    }
 }

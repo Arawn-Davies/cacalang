@@ -305,6 +305,69 @@ public class EmitterTests : IDisposable
             """));
     }
 
+    [Theory]
+    [InlineData("1.5", "1.5")]
+    [InlineData("1.0", "1.0")]
+    [InlineData("7.0 / 2.0", "3.5")]
+    [InlineData("7.5 % 2.0", "1.5")]
+    [InlineData("1 + 1.5", "2.5")]
+    [InlineData("3 / 2.0", "1.5")]
+    [InlineData("-2.5", "-2.5")]
+    [InlineData("1.0 / 0.0", "Infinity")]
+    [InlineData("0.0 / 0.0", "NaN")]
+    public void Emitted_float_arithmetic_matches_the_interpreter(string expression, string expected)
+    {
+        // The formatting rule is generated into the assembly, since a compiled
+        // program cannot call back into the compiler.
+        Assert.Equal(TestHost.Lines(expected), Emit($"print {expression};"));
+    }
+
+    [Theory]
+    [InlineData("1.5 < 2.0", "true")]
+    [InlineData("1.5 <= 1.5", "true")]
+    [InlineData("1.5 >= 1.6", "false")]
+    [InlineData("2.0 == 2", "true")]
+    [InlineData("2.0 != 2", "false")]
+    public void Emitted_float_comparisons_match_the_interpreter(string expression, string expected)
+    {
+        Assert.Equal(TestHost.Lines(expected), Emit($"print {expression};"));
+    }
+
+    [Fact]
+    public void Emitted_comparisons_against_not_a_number_are_all_false()
+    {
+        // The inclusive comparisons are emitted as the unordered opposite,
+        // negated; the ordered form would make every one of these true.
+        Assert.Equal(TestHost.Lines("false", "false", "false", "false"), Emit("""
+            var nan = 0.0 / 0.0;
+            print nan < 1.0;
+            print nan <= 1.0;
+            print nan > 1.0;
+            print nan >= 1.0;
+            """));
+    }
+
+    [Fact]
+    public void Emitted_functions_take_and_return_floats()
+    {
+        Assert.Equal(TestHost.Lines("2.5"), Emit("""
+            func half(n: float): float do return n / 2.0; end
+            print half(5);
+            """));
+    }
+
+    [Fact]
+    public void Emitted_floats_concatenate_into_strings()
+    {
+        Assert.Equal(TestHost.Lines("about 3.14 and 2.0"), Emit("""print "about " + 3.14 + " and " + 2.0;"""));
+    }
+
+    [Fact]
+    public void Emitted_code_reads_a_float()
+    {
+        Assert.Equal(TestHost.Lines("3.0"), Emit("var x = 0.0; read_float x; print x * 2.0;", "1.5\n"));
+    }
+
     /// <summary>
     /// The two backends must agree; this is the cheapest way to keep them from
     /// drifting apart as the language grows.
@@ -321,6 +384,9 @@ public class EmitterTests : IDisposable
     [InlineData("func fib(n: int): int do if n < 2 then return n; end; return fib(n - 1) + fib(n - 2); end for i = 0 to 10 do print fib(i); end;", "")]
     [InlineData("func label(n: int): string do if n % 2 == 0 then return \"even\"; else return \"odd\"; end; end for i = 1 to 4 do print i + \" is \" + label(i); end;", "")]
     [InlineData("func shout(s: string) do print s + \"!\"; end var line = \"\"; read_string line; shout(line);", "hey\n")]
+    [InlineData("var t = 0.0; for i = 1 to 5 do t = t + 1.0 / i; end; print t;", "")]
+    [InlineData("func area(r: float): float do return 3.14159 * r * r; end for i = 1 to 3 do print area(i); end;", "")]
+    [InlineData("print 0.1 + 0.2;", "")]
     public void Both_backends_produce_the_same_output(string source, string input)
     {
         Assert.Equal(TestHost.Run(source, input), Emit(source, input));

@@ -24,6 +24,7 @@ public sealed class Lexer
         ["print"] = TokenKind.PrintKeyword,
         ["read_int"] = TokenKind.ReadIntKeyword,
         ["read_string"] = TokenKind.ReadStringKeyword,
+        ["read_float"] = TokenKind.ReadFloatKeyword,
         ["if"] = TokenKind.IfKeyword,
         ["then"] = TokenKind.ThenKeyword,
         ["else"] = TokenKind.ElseKeyword,
@@ -106,7 +107,7 @@ public sealed class Lexer
 
             if (char.IsDigit(ch))
             {
-                return LexIntLiteral(start, line, column);
+                return LexNumber(start, line, column);
             }
 
             if (ch == '"')
@@ -272,15 +273,43 @@ public sealed class Lexer
         return Make(kind, start, line, column, text);
     }
 
-    private Token LexIntLiteral(int start, int line, int column)
+    /// <summary>
+    /// Lexes a number, which is a float if it has a fractional part and an int
+    /// otherwise.
+    /// </summary>
+    /// <remarks>
+    /// A dot is only part of the number when a digit follows it, so a trailing
+    /// dot is left for whatever comes next rather than producing "1." and a
+    /// confusing error.
+    /// </remarks>
+    private Token LexNumber(int start, int line, int column)
     {
         while (_position < _text.Length && char.IsDigit(Current))
         {
             _position++;
         }
 
+        var isFloat = Current == '.' && char.IsDigit(Lookahead);
+
+        if (isFloat)
+        {
+            _position++;
+
+            while (_position < _text.Length && char.IsDigit(Current))
+            {
+                _position++;
+            }
+        }
+
         var text = _text[start.._position];
 
+        return isFloat
+            ? LexFloatLiteral(text, start, line, column)
+            : LexIntLiteral(text, start, line, column);
+    }
+
+    private Token LexIntLiteral(string text, int start, int line, int column)
+    {
         if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value))
         {
             _diagnostics.Report(
@@ -290,6 +319,24 @@ public sealed class Lexer
         }
 
         return Make(TokenKind.IntLiteral, start, line, column, text, value);
+    }
+
+    private Token LexFloatLiteral(string text, int start, int line, int column)
+    {
+        // Parsing is invariant, so a decimal point means the same thing on
+        // every machine regardless of its regional settings.
+        if (!double.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ||
+            double.IsInfinity(value))
+        {
+            _diagnostics.Report(
+                DiagnosticCode.FloatOutOfRange,
+                new SourceLocation(start, text.Length, line, column),
+                $"the floating point literal '{text}' is outside the range of float");
+
+            value = 0;
+        }
+
+        return Make(TokenKind.FloatLiteral, start, line, column, text, value);
     }
 
     private Token LexStringLiteral(int start, int line, int column)

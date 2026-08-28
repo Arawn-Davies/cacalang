@@ -124,10 +124,10 @@ The full specification, including the semantics of each construct, is in
 
 | | |
 |---|---|
-| Types | `int` (32-bit signed), `string`, `bool`; written as `var x: int = 1` or inferred |
+| Types | `int` (32-bit signed), `float` (IEEE 754 double), `string`, `bool`; written as `var x: int = 1` or inferred |
 | Functions | `func f(a: int): int do … end`, called from anywhere in the file, recursive and mutually recursive |
-| Statements | `var`, assignment, `if … then … else … end`, `for … to … do … end`, `while … do … end`, `break`, `continue`, `return`, `read_int`, `read_string`, `print` |
-| Arithmetic | `+ - * / %` with the usual precedence, left associative; unary `-` |
+| Statements | `var`, assignment, `if … then … else … end`, `for … to … do … end`, `while … do … end`, `break`, `continue`, `return`, `read_int`, `read_float`, `read_string`, `print` |
+| Arithmetic | `+ - * / %` with the usual precedence, left associative; unary `-`. An int mixed with a float is widened, so `7 / 2` is 3 and `7 / 2.0` is 3.5 |
 | Comparison | `< <= > >= == !=`; `==` compares strings by content |
 | Logic | `&& \|\| !`, short-circuiting; conditions must be `bool`, with no integer truthiness |
 | Strings | `+` concatenates; `\n \r \t \0 \\ \"` escapes |
