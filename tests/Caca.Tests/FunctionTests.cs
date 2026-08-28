@@ -320,6 +320,42 @@ public class FunctionTests
     }
 
     [Fact]
+    public void Runaway_recursion_is_caught_even_from_a_caller_with_a_small_stack()
+    {
+        // A test runner's worker thread has far less stack than a main thread,
+        // and on some platforms the CLR stack overflowed before the call-depth
+        // limit was reached. A stack overflow cannot be caught: it kills the
+        // process. The interpreter therefore runs the program on a thread whose
+        // stack it chooses, so the limit is what stops the recursion everywhere.
+        Exception? caught = null;
+
+        var caller = new Thread(
+            () =>
+            {
+                try
+                {
+                    Compilation
+                        .Create("""
+                            func forever(n: int): int do return forever(n + 1); end
+                            print forever(1);
+                            """)
+                        .Run(new StringReader(string.Empty), new StringWriter());
+                }
+                catch (Exception exception)
+                {
+                    caught = exception;
+                }
+            },
+            maxStackSize: 256 * 1024);
+
+        caller.Start();
+        caller.Join();
+
+        Assert.IsType<CacaRuntimeException>(caught);
+        Assert.Contains("call stack depth", caught.Message);
+    }
+
+    [Fact]
     public void Two_functions_may_use_the_same_local_names()
     {
         Assert.Equal(TestHost.Lines("10", "200"), TestHost.Run("""

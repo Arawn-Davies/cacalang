@@ -21,9 +21,10 @@ public class EmitterTests : IDisposable
         {
             Directory.Delete(_directory, recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // The loaded assembly keeps a file handle on some platforms.
+            // Cleanup is best effort; failing to remove a temporary directory
+            // must not fail the test that produced it.
         }
     }
 
@@ -43,7 +44,11 @@ public class EmitterTests : IDisposable
 
         try
         {
-            var assembly = context.LoadFromAssemblyPath(assemblyPath);
+            // Loading from bytes rather than from the path leaves no file
+            // mapping behind. AssemblyLoadContext.Unload is asynchronous, so on
+            // Windows a mapped file is still locked when the directory is
+            // removed, and the delete fails with UnauthorizedAccessException.
+            var assembly = context.LoadFromStream(new MemoryStream(File.ReadAllBytes(assemblyPath)));
             var main = assembly.GetType("Program")?.GetMethod("Main", BindingFlags.Public | BindingFlags.Static);
             Assert.NotNull(main);
 

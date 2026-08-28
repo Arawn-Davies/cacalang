@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using Caca.Binding;
 using Caca.Syntax;
 
@@ -38,6 +39,20 @@ public sealed class Interpreter
     /// </remarks>
     private const int MaxCallDepth = 2000;
 
+    /// <summary>
+    /// The stack the program is given to run on.
+    /// </summary>
+    /// <remarks>
+    /// A deep call chain in the interpreted program becomes a far deeper chain
+    /// of Execute and Evaluate frames. How much stack a thread has varies by
+    /// platform and by host — a test runner's worker thread has a small
+    /// fraction of what a main thread has — so the program is run on a thread
+    /// whose stack this compiler chooses. Without that, <see cref="MaxCallDepth"/>
+    /// is reached first on some machines and the CLR stack overflows first on
+    /// others, and a stack overflow cannot be caught: it takes the process down.
+    /// </remarks>
+    private const int StackSize = 16 * 1024 * 1024;
+
     private readonly IReadOnlyDictionary<string, FunctionSymbol> _functions;
     private readonly TextReader _input;
     private readonly TextWriter _output;
@@ -60,7 +75,30 @@ public sealed class Interpreter
 
     /// <summary>Runs a program that has already passed the type checker.</summary>
     /// <exception cref="CacaRuntimeException">The program failed while running.</exception>
-    public void Run(CompilationUnit program) => Execute(program.TopLevel);
+    public void Run(CompilationUnit program)
+    {
+        ExceptionDispatchInfo? failure = null;
+
+        var thread = new Thread(
+            () =>
+            {
+                try
+                {
+                    Execute(program.TopLevel);
+                }
+                catch (Exception exception)
+                {
+                    failure = ExceptionDispatchInfo.Capture(exception);
+                }
+            },
+            StackSize);
+
+        thread.Start();
+        thread.Join();
+
+        // Rethrow on the caller's thread with the original stack trace intact.
+        failure?.Throw();
+    }
 
     private Flow Execute(Statement statement)
     {
