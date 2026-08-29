@@ -1,9 +1,11 @@
 # The original sketch
 
-The informal grammar that came with the Good for Nothing compiler in 2005,
-kept verbatim for reference. It describes the language as it was then, not as
+An informal sketch of the grammar, carried over verbatim from the repository
+this project was forked from. It describes the language as it was then, not as
 it is now: see [`grammar.md`](grammar.md) for the current specification and
 [`history.md`](history.md) for what changed.
+
+It already differs from the language as published, which had no `read_string`.
 
 ```
 stmt =

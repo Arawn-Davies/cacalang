@@ -1,6 +1,7 @@
-// The original code was Copyright (c) Microsoft Corporation, published with an
-// article by Joel Pobar and Joe Duffy at
-// https://msdn.microsoft.com/en-us/magazine/cc136756.aspx
+// The original code was Copyright (c) Microsoft Corporation, published with
+// "Create a Language Compiler for the .NET Framework" by Joel Pobar,
+// MSDN Magazine, February 2008:
+// https://learn.microsoft.com/en-us/archive/msdn-magazine/2008/february/create-a-language-compiler-for-the-net-framework-using-csharp
 
 using Caca;
 using Caca.Runtime;

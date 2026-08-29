@@ -1,13 +1,36 @@
 # Where cacalang came from
 
-cacalang began as the Good for Nothing compiler that Joel Pobar and Joe Duffy
-presented at PDC 2005, published with
-[an article in MSDN Magazine](https://msdn.microsoft.com/en-us/magazine/cc136756.aspx).
+cacalang began as the Good for Nothing compiler, written by Joel Pobar and
+published in MSDN Magazine in February 2008 as
+["Create a Language Compiler for the .NET Framework"](https://learn.microsoft.com/en-us/archive/msdn-magazine/2008/february/create-a-language-compiler-for-the-net-framework-using-csharp).
 It compiled a tiny language — variables, `print`, `read_int` and a counted loop —
 to .NET IL, as a way of showing how a compiler is put together.
 
 That compiler targeted .NET Framework 2.0 and could only be built with Visual
 Studio on Windows. This is what changed.
+
+## What the original was
+
+The article walks through a compiler in three phases — a scanner, a parser and
+a code generator — and is explicit that it is a teaching example rather than a
+production one. Several things this project later changed are called out in it
+as simplifications made on purpose:
+
+- The scanner produced an `IList<object>`. On typing tokens as `object`, the
+  article notes: *"I could have created a Token class or something similar to
+  encapsulate more information about the token, such as line and column
+  numbers."*
+- The language defined two types, mapped to `System.Int32` and `System.String`.
+- The parser is an LL top-down parser, and the grammar is left deliberately
+  imprecise: *"I haven't specified how big the number can be ... or even if the
+  number can be negative."*
+
+It also warns about the exact class of bug the compiler shipped with:
+*"Even the most seasoned compiler hackers make mistakes at the code-generation
+level. The most common bug is bad IL code, which causes unbalance in the
+stack."* Four of the ten programs in the table below failed that way. The
+article recommends `peverify` for finding it; this project uses a test suite
+that loads and runs every emitted assembly, which fails on the same thing.
 
 ## It would not build at all
 
@@ -82,5 +105,12 @@ compiled program can be run directly.
 
 ## Credit
 
-Original code copyright (c) Microsoft Corporation, by Joel Pobar and Joe Duffy.
-The original terms were published at a page that no longer exists.
+Original code copyright (c) Microsoft Corporation, by Joel Pobar, published with
+["Create a Language Compiler for the .NET Framework"](https://learn.microsoft.com/en-us/archive/msdn-magazine/2008/february/create-a-language-compiler-for-the-net-framework-using-csharp),
+MSDN Magazine, February 2008. The original terms were published at a page that
+no longer exists.
+
+The repository this was forked from credits the compiler to a Professional
+Developers Conference presentation in 2005 by Joel Pobar and Joe Duffy. The
+article itself carries only Joel Pobar's byline, and neither claim is supported
+by it, so this project credits what the article states.

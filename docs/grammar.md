@@ -1,9 +1,13 @@
 # cacalang language specification
 
-Written in a simple EBNF style. Constructs marked (new) were added after the
-language was forked from Good for Nothing; everything else is as specified in
-the original 2005 article, with the ambiguities resolved in favour of what the
-samples imply.
+Written in a simple EBNF style, the metasyntax the original article used.
+
+Constructs marked (new) were added by this project. The rest comes from the
+Good for Nothing language as published, or from the repository this was forked
+from, which had already added `read_string`. Where the original definition was
+ambiguous — it did not say how large a number could be, or whether one could be
+negative — the ambiguity is resolved here in favour of what its own samples
+imply. See [`history.md`](history.md).
 
 ## Grammar
 

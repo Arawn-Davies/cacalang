@@ -55,7 +55,8 @@ dotnet run --project src/Caca.Cli -- build samples/helloworld.caca
 
 ## Credits
 
-cacalang began as the Good for Nothing compiler that Joel Pobar and Joe Duffy
-presented at PDC 2005. Original code copyright (c) Microsoft Corporation; the
-original terms were published at a page that no longer exists. See
-[History](docs/history.md).
+cacalang began as the Good for Nothing compiler, written by Joel Pobar and
+published in MSDN Magazine in February 2008 as
+["Create a Language Compiler for the .NET Framework"](https://learn.microsoft.com/en-us/archive/msdn-magazine/2008/february/create-a-language-compiler-for-the-net-framework-using-csharp).
+Original code copyright (c) Microsoft Corporation; the original terms were
+published at a page that no longer exists. See [History](docs/history.md).
