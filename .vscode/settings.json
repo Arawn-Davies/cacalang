@@ -1,0 +1,6 @@
+{
+  "cacalang.server.path": "${workspaceFolder}/artifacts/langserver/caca-langserver.dll",
+  "files.associations": {
+    "*.caca": "caca"
+  }
+}

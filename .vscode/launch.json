@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Steps through the .caca source itself, using the symbols caca build
+      // writes. Needs the C# extension (ms-dotnettools.csharp), which supplies
+      // the coreclr debug adapter.
+      "name": "Debug the current .caca file",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "caca: build current file",
+      "program": "${workspaceFolder}/artifacts/${fileBasenameNoExtension}.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": true,
+      "justMyCode": false
+    }
+  ]
+}
