@@ -119,8 +119,8 @@ for n = 2 to 30 do
 end;
 ```
 
-The full specification, including the semantics of each construct, is in
-[`docs/grammar.txt`](docs/grammar.txt). In brief:
+[`docs/language.md`](docs/language.md) is a tour of the whole language and
+[`docs/grammar.txt`](docs/grammar.txt) is the formal specification. In brief:
 
 | | |
 |---|---|
@@ -248,6 +248,17 @@ thing distinguishing them. Types were computed by overriding `object.GetType()`
 on AST nodes, which forced the symbol table to be a public static field so those
 nodes could reach into the code generator. Both are gone, in favour of a proper
 token type and a separate type-checking pass.
+
+## Documentation
+
+| | |
+|---|---|
+| [`docs/language.md`](docs/language.md) | A tour of the language, with examples |
+| [`docs/grammar.txt`](docs/grammar.txt) | The grammar and the semantics of each construct |
+| [`docs/diagnostics.md`](docs/diagnostics.md) | Every error the compiler reports, and what causes it |
+| [`docs/architecture.md`](docs/architecture.md) | How the compiler works, stage by stage |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Building, and how to add a language feature |
+| [`editors/vscode/README.md`](editors/vscode/README.md) | Editor setup |
 
 ## Credits
 

@@ -187,3 +187,12 @@ FakesAssemblies/
 GeneratedArtifacts/
 _Pvt_Extensions/
 ModelManifest.xml
+# Local build output used by the editor integration
+artifacts/
+
+# Editor extension package output
+editors/vscode/*.vsix
+
+# Personal scratch programs
+playground.caca
+scratch/

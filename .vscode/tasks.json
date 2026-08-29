@@ -1,0 +1,35 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "caca: run current file",
+      "type": "shell",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- run ${file}",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": "$caca"
+    },
+    {
+      "label": "caca: check current file",
+      "type": "shell",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- check ${file}",
+      "problemMatcher": "$caca"
+    },
+    {
+      "label": "caca: build current file",
+      "type": "shell",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- build ${file} -o ${workspaceFolder}/artifacts/${fileBasenameNoExtension}.exe",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$caca"
+    }
+  ]
+}

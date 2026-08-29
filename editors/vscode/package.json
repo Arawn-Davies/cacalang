@@ -4,7 +4,6 @@
   "description": "Language support for cacalang: live errors, hover types, go to definition.",
   "version": "0.1.0",
   "publisher": "cacalang",
-  "license": "MIT",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -45,9 +44,31 @@
           "description": "Path to the caca-langserver executable. Leave empty to use 'caca-langserver' from PATH."
         }
       }
-    }
+    },
+    "problemMatchers": [
+      {
+        "name": "caca",
+        "owner": "caca",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^(.*)\\((\\d+),(\\d+)\\): (error|warning) (\\w+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        }
+      }
+    ]
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
-  }
+  },
+  "extensionKind": [
+    "workspace"
+  ]
 }
