@@ -1,7 +1,7 @@
 # The cacalang language
 
 A tour of everything in the language. The formal grammar is in
-[`grammar.txt`](grammar.txt); this is the readable version.
+[`grammar.md`](grammar.md); this is the readable version.
 
 Programs are statements separated by `;`. The last one may leave it off.
 

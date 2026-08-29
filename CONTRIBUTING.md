@@ -27,8 +27,9 @@ order:
    feature is a statement a debugger should stop on.
 6. **Tests**: the behaviour through the interpreter, the errors it can produce,
    and the same programs through the emitter.
-7. **Documentation**: `docs/grammar.txt`, `docs/language.md`, and the README's
-   summary table.
+7. **Documentation**: [`docs/grammar.md`](docs/grammar.md) and
+   [`docs/language.md`](docs/language.md), plus
+   [`docs/diagnostics.md`](docs/diagnostics.md) for any new code.
 
 ### The parity rule
 

@@ -113,6 +113,18 @@ with it.
 The JSON-RPC framing is written out rather than taken from a package: it is a
 few dozen lines, and this project is meant to be read.
 
+## Stage by file
+
+| Stage | Where |
+|---|---|
+| Lexer | `src/Caca.Compiler/Syntax/Lexer.cs` |
+| Parser | `src/Caca.Compiler/Syntax/Parser.cs` |
+| Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` |
+| Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` |
+| IL emitter, and the symbols it writes | `src/Caca.Compiler/Emit/IlEmitter.cs` |
+| The native launcher | `src/Caca.Compiler/Emit/AppHost.cs` |
+| Language server | `src/Caca.LanguageServer/` |
+
 ## Where things are
 
 | Path | What is in it |
