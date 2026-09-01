@@ -15,6 +15,21 @@
       "console": "integratedTerminal",
       "stopAtEntry": true,
       "justMyCode": false
+    },
+    {
+      // The same, for files binding to the Interop sample library
+      // (samples/interop/*.caca): builds the library, then the program
+      // against it with --ref.
+      "name": "Debug the current .caca file (Interop)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "caca: build current file with interop",
+      "program": "${workspaceFolder}/artifacts/${fileBasenameNoExtension}.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": true,
+      "justMyCode": false
     }
   ]
 }

@@ -1,0 +1,152 @@
+// Every construct in the language, and every method in the Interop library,
+// in one program. Build the library, then run this against it:
+//
+//   dotnet build samples/interop
+//   dotnet run --project src/Caca.Cli -- run samples/interop/everything.caca --ref samples/interop/bin/Debug/net10.0/Interop.dll
+//
+/* Or compile it and run the executable:
+   dotnet run --project src/Caca.Cli -- build samples/interop/everything.caca -o everything.exe --ref samples/interop/bin/Debug/net10.0/Interop.dll
+   ./everything.exe */
+
+// ---- extern functions: the whole Interop library, and a tour of the BCL ----
+
+extern func say_hello() from "Interop.Hello.SayHello";                            // void, C#
+extern func reverse(text: string): string from "Interop.Hello.Reverse";           // static, C#
+extern func max(a: int, b: int): int from "System.Math.Max";                      // static, BCL
+extern func sqrt(x: float): float from "System.Math.Sqrt";
+extern func upper(s: string): string from "System.String.ToUpperInvariant";       // instance
+extern func substring(s: string, start: int, count: int): string from "System.String.Substring";
+extern func index_of(s: string, part: string): int from "System.String.IndexOf";
+extern func trim(s: string): string from "System.String.Trim";
+extern func length(s: string): int from "System.String.get_Length";               // property getter
+extern func env(name: string): string from "System.Environment.GetEnvironmentVariable";
+extern func collect() from "System.GC.Collect";                                   // void, BCL
+
+// ---- functions: values, void, recursion, mutual recursion ----
+
+func factorial(n: int): int do
+    if n <= 1 then return 1; end;
+    return n * factorial(n - 1);
+end
+
+func isEven(n: int): bool do
+    if n == 0 then return true; end;
+    return isOdd(n - 1);
+end
+
+func isOdd(n: int): bool do
+    if n == 0 then return false; end;
+    return isEven(n - 1);
+end
+
+func greet(name: string) do
+    print "hello, " + name + "!";
+end
+
+// Parameters are by value: this cannot touch the caller's variable.
+func tenTimes(n: int): int do
+    n = n * 10;
+    return n;
+end
+
+// ---- variables: all four types, inferred and annotated ----
+
+var count = 42;               // int, inferred
+var ratio: float = 1;         // float, annotated; the int widens to 1.0
+var word = "  cacalang  ";    // string
+var ready: bool = true;       // bool
+
+// ---- input ----
+
+print "your name?";
+var name = "";
+read_string name;
+greet(trim(name));
+
+print "an int?";
+var n = 0;
+read_int n;
+
+print "a float?";
+var x = 0.0;
+read_float x;
+
+// ---- arithmetic, precedence, widening, unary operators ----
+
+print 10 - 2 - 3;             // 5: left associative
+print 10 / 2 * 5;             // 25
+print 2 + 3 * 4;              // 14: * binds tighter
+print (2 + 3) * 4;            // 20
+print 7 / 2;                  // 3: int division
+print 7 / 2.0;                // 3.5: widened to float
+print 7 % 3;                  // 1
+print -n;
+print +n;                     // unary identity
+print 1.0 / 0.0;              // Infinity, by IEEE 754
+print 0.0 / 0.0;              // NaN
+
+// ---- strings: concatenation converts the other operand ----
+
+print "count: " + count;
+print "ratio: " + ratio;
+print "ready: " + ready;
+
+// ---- comparison and logic, with short-circuiting ----
+
+print n == n && "a" == "a";   // true: string equality is by contents
+print n != n || !ready;       // false
+print 1 < 2;
+print 2 <= 2;
+print 3 > 4;
+print 3 >= 3;
+print n != 0 && 100 / n > 0;  // the right side only runs when n is not 0
+
+// ---- if / else if / else ----
+
+if n < 0 then
+    print "negative";
+else if n == 0 then
+    print "zero";
+else
+    print "positive";
+end;
+
+// ---- loops: for (inclusive bounds), while, break, continue ----
+
+for i = 1 to 3 do
+    print "for " + i;
+end;
+
+var m = 3;
+while m > 0 do
+    print "while " + m;
+    m = m - 1;
+end;
+
+for i = 1 to 10 do
+    if i > 4 then break; end;
+    if i % 2 == 0 then continue; end;
+    print "odd " + i;
+end;
+
+// ---- calling the functions ----
+
+print factorial(5);           // 120
+print isEven(10);             // true
+print tenTimes(count);        // 420
+print count;                  // still 42: passed by value
+
+// ---- calling the externs ----
+
+say_hello();                  // Hello, World from C#!
+print reverse("!derorrim");
+print max(n, count);
+print sqrt(x * x);            // |x|, near enough
+print upper(trim(word));      // CACALANG
+print substring("cacalang", 0, 4);
+print index_of("cacalang", "lang");
+print length(trim(word));     // 8
+print env("CACA_SURELY_UNSET_XYZ");   // a null string prints as an empty line
+collect();                    // a void extern is a statement
+
+print "that's everything";

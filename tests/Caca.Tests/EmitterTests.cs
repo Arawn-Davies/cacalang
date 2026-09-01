@@ -352,6 +352,19 @@ public class EmitterTests : IDisposable
     }
 
     [Fact]
+    public void Emitted_annotated_declaration_widens_its_initializer()
+    {
+        // The local must be declared from the widened type: declaring it from
+        // the initializer's own type stored a double into an int32 slot, and
+        // the runtime refused to jit the method.
+        Assert.Equal(TestHost.Lines("1.0", "1.5"), Emit("""
+            var half: float = 1;
+            print half;
+            print half + 0.5;
+            """));
+    }
+
+    [Fact]
     public void Emitted_functions_take_and_return_floats()
     {
         Assert.Equal(TestHost.Lines("2.5"), Emit("""
