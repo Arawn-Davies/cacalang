@@ -452,7 +452,11 @@ public sealed class IlEmitter
 
             case VariableDeclaration declaration:
                 MarkPosition(declaration.Location);
-                Declare(declaration.Name, declaration.Initializer.Type);
+
+                // The effective type, not the written one: `var x: float = 1`
+                // widens its initializer, so the local must be a float or the
+                // store would mismatch the value on the stack.
+                Declare(declaration.Name, declaration.Initializer.EffectiveType);
                 EmitExpression(declaration.Initializer);
                 Store(declaration.Name);
                 break;
