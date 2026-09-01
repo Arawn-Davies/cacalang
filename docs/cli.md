@@ -76,7 +76,7 @@ targets may bind to, on `run`, `check` and `build` alike:
 
 ```sh
 dotnet build samples/interop
-caca run samples/interop/interop.caca --ref samples/interop/bin/Debug/net10.0/Interop.dll
+caca run samples/interop/hello.caca --ref samples/interop/bin/Debug/net10.0/Interop.dll
 ```
 
 `caca build` copies each referenced assembly beside the output, because that is

@@ -2,9 +2,19 @@
   "version": "2.0.0",
   "tasks": [
     {
+      // Every task references the Interop sample library, so a .caca file
+      // binding to it works the same as any other. The reference is harmless
+      // for files that never mention it.
+      "label": "caca: build interop library",
+      "type": "shell",
+      "command": "dotnet build ${workspaceFolder}/samples/interop",
+      "problemMatcher": "$msCompile"
+    },
+    {
       "label": "caca: run current file",
       "type": "shell",
-      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- run ${file}",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- run ${file} --ref ${workspaceFolder}/samples/interop/bin/Debug/net10.0/Interop.dll",
+      "dependsOn": ["caca: build interop library"],
       "group": {
         "kind": "test",
         "isDefault": true
@@ -18,32 +28,19 @@
     {
       "label": "caca: check current file",
       "type": "shell",
-      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- check ${file}",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- check ${file} --ref ${workspaceFolder}/samples/interop/bin/Debug/net10.0/Interop.dll",
+      "dependsOn": ["caca: build interop library"],
       "problemMatcher": "$caca"
     },
     {
       "label": "caca: build current file",
       "type": "shell",
-      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- build ${file} -o ${workspaceFolder}/artifacts/${fileBasenameNoExtension}.exe",
+      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- build ${file} -o ${workspaceFolder}/artifacts/${fileBasenameNoExtension}.exe --ref ${workspaceFolder}/samples/interop/bin/Debug/net10.0/Interop.dll",
+      "dependsOn": ["caca: build interop library"],
       "group": {
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": "$caca"
-    },
-    {
-      "label": "caca: build interop library",
-      "type": "shell",
-      "command": "dotnet build ${workspaceFolder}/samples/interop",
-      "problemMatcher": "$msCompile"
-    },
-    {
-      // For .caca files binding to the Interop sample library, which the
-      // plain build task cannot know to reference.
-      "label": "caca: build current file with interop",
-      "type": "shell",
-      "command": "dotnet run --project ${workspaceFolder}/src/Caca.Cli -- build ${file} -o ${workspaceFolder}/artifacts/${fileBasenameNoExtension}.exe --ref ${workspaceFolder}/samples/interop/bin/Debug/net10.0/Interop.dll",
-      "dependsOn": ["caca: build interop library"],
       "problemMatcher": "$caca"
     }
   ]

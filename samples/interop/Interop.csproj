@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- A C# library interop.caca binds to. Build it before running the sample:
-       see the comment at the top of interop.caca. -->
+  <!-- A C# library hello.caca binds to. Build it before running the sample:
+       see the comment at the top of hello.caca. -->
 
 </Project>
