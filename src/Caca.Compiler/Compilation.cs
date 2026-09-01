@@ -1,3 +1,4 @@
+using System.Reflection;
 using Caca.Binding;
 using Caca.Diagnostics;
 using Caca.Emit;
@@ -41,7 +42,14 @@ public sealed class Compilation
     public bool Succeeded => !Diagnostics.HasErrors;
 
     /// <summary>Lexes, parses and type-checks <paramref name="text"/>.</summary>
-    public static Compilation Create(string text, string? fileName = null)
+    /// <param name="references">
+    /// Assemblies extern functions may bind to, beyond the ones already loaded
+    /// into this process.
+    /// </param>
+    public static Compilation Create(
+        string text,
+        string? fileName = null,
+        IReadOnlyList<Assembly>? references = null)
     {
         var diagnostics = new DiagnosticBag();
         var tokens = Lexer.Tokenize(text, diagnostics);
@@ -51,13 +59,13 @@ public sealed class Compilation
         // front end has produced one.
         var binding = diagnostics.HasErrors
             ? BindingResult.Empty
-            : TypeChecker.Check(program, diagnostics);
+            : TypeChecker.Check(program, diagnostics, references);
 
         return new Compilation(fileName, program, binding, diagnostics);
     }
 
-    public static Compilation CreateFromFile(string path) =>
-        Create(File.ReadAllText(path), Path.GetFileName(path));
+    public static Compilation CreateFromFile(string path, IReadOnlyList<Assembly>? references = null) =>
+        Create(File.ReadAllText(path), Path.GetFileName(path), references);
 
     /// <summary>Executes the program with the interpreter backend.</summary>
     /// <exception cref="InvalidOperationException">The program did not compile.</exception>

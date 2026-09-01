@@ -25,6 +25,27 @@ public class SampleTests
     }
 
     [Fact]
+    public void Shell_sample_runs()
+    {
+        var compilation = Compilation.CreateFromFile(TestHost.SamplePath("shell.caca"));
+        Assert.True(compilation.Succeeded, string.Join(Environment.NewLine, compilation.FormatDiagnostics()));
+
+        var output = new StringWriter { NewLine = "\n" };
+        compilation.Run(new StringReader("echo hi\nupper hi\nlen hello\nsqrt 16\nwrong\nexit\n"), output);
+
+        Assert.Equal(
+            TestHost.Lines(
+                "cacash - type 'help' for commands, 'exit' to leave",
+                "> ", "hi",
+                "> ", "HI",
+                "> ", "5",
+                "> ", "4.0",
+                "> ", "unknown command 'wrong'; type 'help'",
+                "> ", "bye"),
+            output.ToString());
+    }
+
+    [Fact]
     public void Loop_sample_runs()
     {
         var compilation = Compilation.CreateFromFile(TestHost.SamplePath("loop.caca"));

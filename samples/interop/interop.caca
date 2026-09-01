@@ -1,0 +1,17 @@
+// Calls into a C# library. Build the library first, then run this against it:
+//
+//   dotnet build samples/interop
+//   dotnet run --project src/Caca.Cli -- run samples/interop/interop.caca --ref samples/interop/bin/Debug/net10.0/Interop.dll
+//
+// Or compile it; the referenced assembly is copied beside the executable.
+// The output needs its own name: it cannot share the library's, because the
+// library is copied beside it.
+//
+//   dotnet run --project src/Caca.Cli -- build samples/interop/interop.caca -o hello.exe --ref samples/interop/bin/Debug/net10.0/Interop.dll
+//   ./hello.exe
+
+extern func say_hello() from "Interop.Hello.SayHello";
+extern func reverse(text: string): string from "Interop.Hello.Reverse";
+
+say_hello();
+print reverse("!#C dna gnalacac");

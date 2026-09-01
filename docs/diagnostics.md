@@ -52,6 +52,9 @@ These come from what the program means.
 | `CACA0018` | `return` outside any function. |
 | `CACA0019` | A function that owes a value can reach its end without returning one. |
 | `CACA0020` | A value was needed where the expression produces none, such as printing the result of a function that returns nothing. |
+| `CACA0022` | An extern target that does not name a method: it must be `"Namespace.Type.Method"`. |
+| `CACA0023` | An extern target that does not resolve: the type was not found, or it has no public method with that name and the declared parameter types. |
+| `CACA0024` | An extern target whose method returns a different type than the declaration. |
 
 `CACA0019` is decided by asking whether a statement returns on every path: a
 `return` does, a block does if any statement in it does, and an `if` does if it
@@ -69,6 +72,8 @@ a single line rather than a stack trace.
 | `'…' is not an integer` | `read_int` given input that is not one. |
 | `'…' is not a number` | `read_float` given input that is not one. |
 | `call stack depth of … exceeded` | Runaway recursion. The interpreter stops rather than overflowing the stack, which cannot be caught and would take the process down. |
+| `'…' failed: …` | An extern function's .NET method threw; the message is the exception's. |
+| `'…' was called on a null …` | An extern instance method's receiver was a null returned by another .NET method. |
 
 ## Where the codes live
 

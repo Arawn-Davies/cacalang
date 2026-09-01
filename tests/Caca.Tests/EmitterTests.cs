@@ -30,9 +30,13 @@ public class EmitterTests : IDisposable
     }
 
     /// <summary>Compiles a program to an assembly, runs it, and returns its output.</summary>
-    private string Emit(string source, string input = "", [System.Runtime.CompilerServices.CallerMemberName] string name = "")
+    private string Emit(
+        string source,
+        string input = "",
+        IReadOnlyList<Assembly>? references = null,
+        [System.Runtime.CompilerServices.CallerMemberName] string name = "")
     {
-        var compilation = Compilation.Create(source);
+        var compilation = Compilation.Create(source, references: references);
         Assert.True(compilation.Succeeded, string.Join(Environment.NewLine, compilation.FormatDiagnostics()));
 
         var path = Path.Combine(_directory, $"{name}_{Guid.NewGuid():N}.exe");
@@ -368,6 +372,36 @@ public class EmitterTests : IDisposable
         Assert.Equal(TestHost.Lines("3.0"), Emit("var x = 0.0; read_float x; print x * 2.0;", "1.5\n"));
     }
 
+    [Fact]
+    public void Emitted_extern_calls_bind_to_static_and_instance_methods()
+    {
+        Assert.Equal(TestHost.Lines("3.0", "HELLO"), Emit("""
+            extern func sqrt(x: float): float from "System.Math.Sqrt";
+            extern func shout(s: string): string from "System.String.ToUpperInvariant";
+            print sqrt(9.0);
+            print shout("hello");
+            """));
+    }
+
+    [Fact]
+    public void Emitted_extern_calls_a_referenced_assembly()
+    {
+        // The emitted assembly carries a reference to the C# library; running
+        // it proves that reference resolves.
+        Assert.Equal(
+            TestHost.Lines("hello from C#, emitted", "42", "Hello, World from C#!"),
+            Emit(
+                """
+                extern func greet(name: string): string from "Caca.ReferenceLibrary.Greetings.Greet";
+                extern func triple(n: int): int from "Caca.ReferenceLibrary.Greetings.Triple";
+                extern func say_hello() from "Caca.ReferenceLibrary.Greetings.SayHello";
+                print greet("emitted");
+                print triple(14);
+                say_hello();
+                """,
+                references: [ExternTests.ReferenceLibrary]));
+    }
+
     /// <summary>
     /// The two backends must agree; this is the cheapest way to keep them from
     /// drifting apart as the language grows.
@@ -387,6 +421,10 @@ public class EmitterTests : IDisposable
     [InlineData("var t = 0.0; for i = 1 to 5 do t = t + 1.0 / i; end; print t;", "")]
     [InlineData("func area(r: float): float do return 3.14159 * r * r; end for i = 1 to 3 do print area(i); end;", "")]
     [InlineData("print 0.1 + 0.2;", "")]
+    [InlineData("extern func sqrt(x: float): float from \"System.Math.Sqrt\"; print sqrt(2.0);", "")]
+    [InlineData("extern func max(a: int, b: int): int from \"System.Math.Max\"; print max(2, 9) + max(1, 3);", "")]
+    [InlineData("extern func trim(s: string): string from \"System.String.Trim\"; var line = \"\"; read_string line; print trim(line) + \"!\";", "  hey  \n")]
+    [InlineData("var s = \"\"; read_string s; print s + \"!\";", "")]
     public void Both_backends_produce_the_same_output(string source, string input)
     {
         Assert.Equal(TestHost.Run(source, input), Emit(source, input));

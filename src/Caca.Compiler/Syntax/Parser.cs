@@ -92,7 +92,7 @@ public sealed class Parser
 
         while (Current.Kind != TokenKind.EndOfFile)
         {
-            if (Current.Kind == TokenKind.FuncKeyword)
+            if (Current.Kind is TokenKind.FuncKeyword or TokenKind.ExternKeyword)
             {
                 functions.Add(ParseFunction());
                 Match(TokenKind.Semicolon);
@@ -100,7 +100,7 @@ public sealed class Parser
             }
 
             var before = _position;
-            var block = ParseStatements(TokenKind.FuncKeyword, TokenKind.EndOfFile);
+            var block = ParseStatements(TokenKind.FuncKeyword, TokenKind.ExternKeyword, TokenKind.EndOfFile);
             statements.AddRange(block.Statements);
 
             // Guarantee forward progress even when nothing could be parsed.
@@ -117,12 +117,40 @@ public sealed class Parser
 
     private FunctionDeclaration ParseFunction()
     {
-        var keyword = Advance();
+        var keyword = Current;
+        var isExtern = Match(TokenKind.ExternKeyword);
+
+        if (isExtern)
+        {
+            Expect(TokenKind.FuncKeyword, "after 'extern'");
+        }
+        else
+        {
+            Advance();
+        }
+
         var name = Expect(TokenKind.Identifier, "after 'func'");
         var parameters = ParseParameterList();
 
         // A function with no written return type returns nothing.
         var returnType = Match(TokenKind.Colon) ? ParseTypeReference() : null;
+
+        // An extern function has no body; it names the .NET method it binds to.
+        if (isExtern)
+        {
+            Expect(TokenKind.FromKeyword, "before the extern target");
+            var target = Expect(TokenKind.StringLiteral, "naming the .NET method, like \"System.Math.Sqrt\"");
+
+            return new FunctionDeclaration(
+                name.Text,
+                name.Location,
+                parameters,
+                returnType,
+                new BlockStatement([], target.Location),
+                keyword.Location.To(target.Location),
+                target.StringValue,
+                target.Location);
+        }
 
         Expect(TokenKind.DoKeyword, "before the function body");
         var body = ParseStatements(TokenKind.EndKeyword);

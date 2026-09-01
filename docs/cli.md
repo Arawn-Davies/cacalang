@@ -11,6 +11,7 @@ caca <file.caca>                     Shorthand for 'caca build'
 | Option | |
 |---|---|
 | `-o`, `--output <path>` | Where to write the executable (default: `<file>.exe`) |
+| `-r`, `--ref <path>` | A .NET assembly `extern func` targets may bind to; repeat for more than one |
 | `--no-launcher` | Emit only the assembly, to be run with `dotnet` |
 | `--no-debug` | Do not write debugging symbols |
 | `-h`, `--help` | Show help |
@@ -67,6 +68,26 @@ configuration are still written, and still run with `dotnet hello.dll`.
 The runnable file is named `.exe` on every platform, Linux and macOS included,
 so that the name is the same everywhere. The assembly beside it has to be a
 `.dll`, so the two cannot share one.
+
+## Referencing a C# assembly
+
+`--ref` names a .NET assembly that [`extern func`](language.md#calling-net)
+targets may bind to, on `run`, `check` and `build` alike:
+
+```sh
+dotnet build samples/interop
+caca run samples/interop/interop.caca --ref samples/interop/bin/Debug/net10.0/Interop.dll
+```
+
+`caca build` copies each referenced assembly beside the output, because that is
+where the compiled program's references are resolved from. The output therefore
+cannot share a referenced assembly's name — not even by letter case, since on a
+case-insensitive file system the copy would overwrite the program — and the
+build refuses the combination rather than writing one file over the other.
+
+The language server resolves extern targets against the core library and the
+compiler's own process only, so an extern bound to a `--ref` assembly shows
+`CACA0023` in the editor while still building fine at the command line.
 
 ## Debugging a compiled program
 

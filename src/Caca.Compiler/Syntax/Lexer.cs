@@ -35,6 +35,8 @@ public sealed class Lexer
         ["false"] = TokenKind.FalseKeyword,
         ["func"] = TokenKind.FuncKeyword,
         ["return"] = TokenKind.ReturnKeyword,
+        ["extern"] = TokenKind.ExternKeyword,
+        ["from"] = TokenKind.FromKeyword,
     };
 
     private readonly string _text;

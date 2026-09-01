@@ -1,3 +1,4 @@
+using System.Reflection;
 using Caca.Diagnostics;
 using Caca.Syntax;
 
@@ -17,6 +18,7 @@ namespace Caca.Binding;
 public sealed class TypeChecker
 {
     private readonly DiagnosticBag _diagnostics;
+    private readonly IReadOnlyList<Assembly> _referencedAssemblies;
     private readonly Dictionary<string, FunctionSymbol> _functions = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -32,12 +34,23 @@ public sealed class TypeChecker
     private FunctionSymbol? _currentFunction;
     private int _loopDepth;
 
-    private TypeChecker(DiagnosticBag diagnostics) => _diagnostics = diagnostics;
+    private TypeChecker(DiagnosticBag diagnostics, IReadOnlyList<Assembly>? references)
+    {
+        _diagnostics = diagnostics;
+        _referencedAssemblies = references ?? [];
+    }
 
     /// <summary>Type-checks <paramref name="unit"/> in place.</summary>
-    public static BindingResult Check(CompilationUnit unit, DiagnosticBag diagnostics)
+    /// <param name="references">
+    /// Assemblies extern targets are resolved against, before the ones already
+    /// loaded into this process.
+    /// </param>
+    public static BindingResult Check(
+        CompilationUnit unit,
+        DiagnosticBag diagnostics,
+        IReadOnlyList<Assembly>? references = null)
     {
-        var checker = new TypeChecker(diagnostics);
+        var checker = new TypeChecker(diagnostics, references);
         checker.CheckCompilationUnit(unit);
         return new BindingResult(checker._functions, checker._references);
     }
@@ -113,6 +126,11 @@ public sealed class TypeChecker
         var returnType = function.ReturnType is null ? CacaType.Void : ResolveType(function.ReturnType);
         var symbol = new FunctionSymbol(function.Name, parameters, returnType, function, function.NameLocation);
 
+        if (function.IsExtern)
+        {
+            symbol.ExternMethod = ResolveExtern(function, parameters, returnType);
+        }
+
         if (_functions.TryAdd(function.Name, symbol))
         {
             Reference(function.NameLocation, symbol, isDefinition: true);
@@ -128,6 +146,13 @@ public sealed class TypeChecker
 
     private void CheckFunctionBody(FunctionDeclaration function)
     {
+        // An extern function has no body; its signature was checked against the
+        // .NET method when it was declared.
+        if (function.IsExtern)
+        {
+            return;
+        }
+
         if (!_functions.TryGetValue(function.Name, out var symbol) || symbol.Declaration != function)
         {
             // A duplicate declaration; the first one owns the name.
@@ -159,6 +184,122 @@ public sealed class TypeChecker
                 $"'{function.Name}' must return a value of type {symbol.ReturnType.Describe()} " +
                 "on every path, but at least one path reaches the end without returning");
         }
+    }
+
+    /// <summary>
+    /// Resolves an extern function's target to the .NET method it names,
+    /// reporting a diagnostic and returning <see langword="null"/> when it
+    /// cannot.
+    /// </summary>
+    /// <remarks>
+    /// The target is <c>"Namespace.Type.Method"</c>. A public static method
+    /// whose signature matches the declared one is preferred; failing that, an
+    /// instance method whose receiver is the first declared parameter, which is
+    /// what makes <c>System.String.Substring</c> callable. Instance binding is
+    /// limited to reference-type receivers: a value-type receiver would need
+    /// its address rather than its value, and no interesting target needs it.
+    /// </remarks>
+    private MethodInfo? ResolveExtern(
+        FunctionDeclaration function,
+        IReadOnlyList<(string Name, CacaType Type)> parameters,
+        CacaType returnType)
+    {
+        // A signature that failed to resolve has already been diagnosed.
+        if (returnType == CacaType.Error || parameters.Any(p => p.Type == CacaType.Error))
+        {
+            return null;
+        }
+
+        var target = function.ExternTarget!;
+        var location = function.ExternTargetLocation!.Value;
+        var lastDot = target.LastIndexOf('.');
+
+        if (lastDot <= 0 || lastDot == target.Length - 1)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.ExternTargetInvalid,
+                location,
+                $"'{target}' does not name a .NET method; write it as \"Namespace.Type.Method\"");
+            return null;
+        }
+
+        var typeName = target[..lastDot];
+        var methodName = target[(lastDot + 1)..];
+        var type = FindType(typeName);
+
+        if (type is null)
+        {
+            _diagnostics.Report(
+                DiagnosticCode.ExternTargetNotFound,
+                location,
+                $"no type named '{typeName}' was found; " +
+                "it must live in the core library, a loaded assembly, or one passed with --ref");
+            return null;
+        }
+
+        var parameterTypes = parameters.Select(p => p.Type.ToClrType()).ToArray();
+        var method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, parameterTypes);
+
+        // An instance method is callable when the first declared parameter is
+        // the receiver, so `substring(s: string, start: int)` finds
+        // System.String.Substring(int).
+        if (method is null && parameterTypes.Length > 0
+            && parameterTypes[0] == type && !type.IsValueType)
+        {
+            method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, parameterTypes[1..]);
+        }
+
+        if (method is null)
+        {
+            var signature = string.Join(", ", parameters.Select(p => p.Type.Describe()));
+            _diagnostics.Report(
+                DiagnosticCode.ExternTargetNotFound,
+                location,
+                $"'{typeName}' has no public method '{methodName}' taking ({signature})");
+            return null;
+        }
+
+        if (method.ReturnType != returnType.ToClrType())
+        {
+            _diagnostics.Report(
+                DiagnosticCode.ExternReturnTypeMismatch,
+                location,
+                $"'{target}' returns {method.ReturnType.Name}, " +
+                $"but '{function.Name}' is declared to return {returnType.Describe()}");
+            return null;
+        }
+
+        return method;
+    }
+
+    /// <summary>
+    /// Finds a type by its namespace-qualified name: in the referenced
+    /// assemblies first, then the core library, then whatever else is loaded.
+    /// </summary>
+    private Type? FindType(string name)
+    {
+        foreach (var assembly in _referencedAssemblies)
+        {
+            if (assembly.GetType(name) is { } fromReference)
+            {
+                return fromReference;
+            }
+        }
+
+        if (Type.GetType(name) is { } fromCore)
+        {
+            return fromCore;
+        }
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (!assembly.IsDynamic && assembly.GetType(name) is { } fromLoaded)
+            {
+                return fromLoaded;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
