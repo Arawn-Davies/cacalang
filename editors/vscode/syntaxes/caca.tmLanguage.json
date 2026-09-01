@@ -49,11 +49,11 @@
         },
         {
           "name": "keyword.declaration.caca",
-          "match": "\\b(var|func)\\b"
+          "match": "\\b(var|func|extern|from)\\b"
         },
         {
           "name": "keyword.other.caca",
-          "match": "\\b(print|read_int|read_string)\\b"
+          "match": "\\b(print|read_int|read_string|read_float)\\b"
         }
       ]
     },

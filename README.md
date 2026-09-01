@@ -1,8 +1,9 @@
 # cacalang
 
 A small, C-like language with a compiler that both interprets programs and
-compiles them to real .NET assemblies. Builds and runs on Windows, macOS and
-Linux.
+compiles them to real .NET assemblies. Programs can call into .NET — the
+standard library, or your own C# assemblies — through `extern` functions.
+Builds and runs on Windows, macOS and Linux.
 
 ```
 func isPrime(n: int): bool do

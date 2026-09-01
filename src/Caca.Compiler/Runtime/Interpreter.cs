@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
 using Caca.Binding;
 using Caca.Syntax;
@@ -290,6 +291,11 @@ public sealed class Interpreter
         // Arguments are evaluated in the caller's scope, before it is swapped out.
         var arguments = call.Arguments.Select(Evaluate).ToArray();
 
+        if (function.IsExtern)
+        {
+            return InvokeExtern(function, arguments);
+        }
+
         if (++_depth > MaxCallDepth)
         {
             _depth--;
@@ -326,6 +332,51 @@ public sealed class Interpreter
 
     /// <summary>The value standing in for the result of a function that returns nothing.</summary>
     private static readonly object Nothing = new();
+
+    /// <summary>
+    /// Calls the .NET method an extern function is bound to.
+    /// </summary>
+    /// <remarks>
+    /// The type checker resolved the method against the declared signature, so
+    /// the arguments already have exactly the CLR types it takes. What the
+    /// method throws becomes a runtime error the program's author can read,
+    /// the same way division by zero does.
+    /// </remarks>
+    private object InvokeExtern(FunctionSymbol function, object[] arguments)
+    {
+        var method = function.ExternMethod!;
+
+        try
+        {
+            object? result;
+
+            if (method.IsStatic)
+            {
+                result = method.Invoke(null, arguments);
+            }
+            else
+            {
+                // The first argument is the receiver. It can only be null when
+                // another extern produced a null string; the emitted callvirt
+                // would fail on it too.
+                var receiver = arguments[0]
+                    ?? throw new CacaRuntimeException($"'{function.Name}' was called on a null {function.Parameters[0].Type.Describe()}");
+
+                result = method.Invoke(receiver, arguments[1..]);
+            }
+
+            // Only a void method's absent result becomes the sentinel. A null
+            // returned by a string method stays null, which prints as an empty
+            // line — exactly what the emitted program's Console.WriteLine does
+            // with it. Substituting the sentinel there made printing it crash.
+            return method.ReturnType == typeof(void) ? Nothing : result!;
+        }
+        catch (TargetInvocationException exception)
+        {
+            var inner = exception.InnerException ?? exception;
+            throw new CacaRuntimeException($"'{function.Name}' failed: {inner.Message}");
+        }
+    }
 
     private object EvaluateUnary(UnaryExpression unary)
     {

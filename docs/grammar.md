@@ -16,6 +16,7 @@ imply. See [`history.md`](history.md).
 <stmt_list>  := <stmt> (';' <stmt>)* ';'?      ; a trailing ';' is optional (new)
 
 <func_decl>  := func <ident> '(' <params>? ')' (':' <type>)? do <stmt_list> end   ; (new)
+              | extern func <ident> '(' <params>? ')' (':' <type>)? from <string>  ; (new)
 <params>     := <param> (',' <param>)*                           ; (new)
 <param>      := <ident> ':' <type>                               ; (new)
 <type>       := int | float | string | bool                      ; (new)
@@ -129,6 +130,38 @@ return a value must do so on every path.
 
 Parameters are passed by value: assigning to one inside a function does not
 affect the caller's variable.
+
+### Extern functions
+
+`extern func` binds a name to a .NET method instead of a body. The target
+string is the method's namespace-qualified type followed by the method name,
+as in `"System.Math.Sqrt"`. The declared signature selects the overload: the
+compiler resolves a public static method whose parameter types are exactly
+the declared ones (`int` is `Int32`, `float` is `Double`, `string` is
+`String`, `bool` is `Boolean`), whose return type is the declared one, or
+`void` for a declaration with no return type. When no static method matches,
+an instance method is resolved with the first declared parameter as its
+receiver; the receiver must be a reference type. A property is reached
+through its getter, as in `"System.String.get_Length"`.
+
+The target type is looked up in the referenced assemblies given to the
+compiler, then the core library, then the .NET runtime's own assemblies —
+deliberately not everything loaded into the compiling process, whose contents
+a compiled program cannot rely on. Parameter types must match exactly:
+reflection's implicit widenings are not used, so an `int` declaration never
+binds to a `double` parameter. A target that does not resolve — a malformed
+name, a missing type or method, a signature or return type that matches
+nothing — is a compile-time error.
+
+`extern` is a keyword; `from` is contextual, recognized only in this
+declaration, so existing programs using `from` as a name are unaffected.
+
+A call to an extern function follows every rule a call to a declared function
+follows: arguments are type-checked, ints widen to float parameters, and a
+void function is only a statement. An exception thrown by the bound method is
+a runtime error naming the function. A null returned by a .NET method — the
+language itself has none — mostly behaves as an empty string, but is not
+equal to `""`.
 
 ### Scope
 

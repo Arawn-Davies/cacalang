@@ -256,6 +256,13 @@ public sealed class IlEmitter
 
         foreach (var (name, function) in functions)
         {
+            // An extern function has no body to emit; calls to it go straight
+            // to the .NET method it is bound to.
+            if (function.IsExtern)
+            {
+                continue;
+            }
+
             var parameterTypes = function.Parameters.Select(p => p.Type.ToClrType()).ToArray();
 
             var method = programType.DefineMethod(
@@ -540,6 +547,15 @@ public sealed class IlEmitter
     private void EmitRead(ReadStatement read)
     {
         _il.Emit(OpCodes.Call, ConsoleReadLine);
+
+        // ReadLine returns null at the end of input; the interpreter reads an
+        // empty string there, so the emitted program must as well.
+        var hasLine = _il.DefineLabel();
+        _il.Emit(OpCodes.Dup);
+        _il.Emit(OpCodes.Brtrue, hasLine);
+        _il.Emit(OpCodes.Pop);
+        _il.Emit(OpCodes.Ldstr, string.Empty);
+        _il.MarkLabel(hasLine);
 
         if (read.Type is CacaType.Int or CacaType.Float)
         {
@@ -876,6 +892,15 @@ public sealed class IlEmitter
         foreach (var argument in call.Arguments)
         {
             EmitExpression(argument);
+        }
+
+        // An extern call goes straight to the .NET method the type checker
+        // resolved. An instance method takes its first argument as the
+        // receiver, which is already first on the stack.
+        if (call.Target?.ExternMethod is { } external)
+        {
+            _il.Emit(external.IsStatic ? OpCodes.Call : OpCodes.Callvirt, external);
+            return;
         }
 
         _il.Emit(OpCodes.Call, _methods[call.Name]);

@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Caca.Compiler\Caca.Compiler.csproj" />
     <ProjectReference Include="..\..\src\Caca.LanguageServer\Caca.LanguageServer.csproj" />
     <ProjectReference Include="..\..\src\Caca.Cli\Caca.Cli.csproj" />
+    <ProjectReference Include="..\Caca.ReferenceLibrary\Caca.ReferenceLibrary.csproj" />
   </ItemGroup>
 
   <ItemGroup>

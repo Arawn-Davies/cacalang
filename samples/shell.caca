@@ -1,0 +1,77 @@
+// A tiny command shell, written in cacalang.
+//
+// Everything beyond the language itself comes in through extern functions:
+// string handling from System.String, the working directory and environment
+// from System.IO and System.Environment, and arithmetic from System.Math.
+
+extern func length(s: string): int from "System.String.get_Length";
+extern func substring(s: string, start: int, count: int): string from "System.String.Substring";
+extern func index_of(s: string, part: string): int from "System.String.IndexOf";
+extern func trim(s: string): string from "System.String.Trim";
+extern func upper(s: string): string from "System.String.ToUpperInvariant";
+extern func sqrt(x: float): float from "System.Math.Sqrt";
+extern func to_float(s: string): float from "System.Double.Parse";
+extern func cwd(): string from "System.IO.Directory.GetCurrentDirectory";
+extern func env(name: string): string from "System.Environment.GetEnvironmentVariable";
+extern func user(): string from "System.Environment.get_UserName";
+extern func host(): string from "System.Environment.get_MachineName";
+
+// The word before the first space, or the whole line if there is none.
+func command_of(line: string): string do
+    var space = index_of(line, " ");
+    if space < 0 then return line; end;
+    return substring(line, 0, space);
+end
+
+// Everything after the first space, trimmed, or "" if there is nothing.
+func argument_of(line: string): string do
+    var space = index_of(line, " ");
+    if space < 0 then return ""; end;
+    return trim(substring(line, space + 1, length(line) - space - 1));
+end
+
+print "cacash - type 'help' for commands, 'exit' to leave";
+
+var running = true;
+while running do
+    print "> ";
+
+    var line = "";
+    read_string line;
+    line = trim(line);
+
+    var command = command_of(line);
+    var argument = argument_of(line);
+
+    if command == "exit" then
+        running = false;
+    else if command == "help" then
+        print "help         show this list";
+        print "pwd          print the working directory";
+        print "whoami       print the user and machine";
+        print "env NAME     print an environment variable";
+        print "echo TEXT    print TEXT";
+        print "upper TEXT   print TEXT in capitals";
+        print "len TEXT     print the length of TEXT";
+        print "sqrt NUMBER  print the square root of NUMBER";
+        print "exit         leave the shell";
+    else if command == "pwd" then
+        print cwd();
+    else if command == "whoami" then
+        print user() + "@" + host();
+    else if command == "env" then
+        print env(argument);
+    else if command == "echo" then
+        print argument;
+    else if command == "upper" then
+        print upper(argument);
+    else if command == "len" then
+        print length(argument);
+    else if command == "sqrt" then
+        print sqrt(to_float(argument));
+    else if command != "" then
+        print "unknown command '" + command + "'; type 'help'";
+    end;
+end;
+
+print "bye";

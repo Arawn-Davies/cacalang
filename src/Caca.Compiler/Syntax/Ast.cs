@@ -45,14 +45,19 @@ public sealed class ParameterDeclaration(
     public TypeReference Type { get; } = type;
 }
 
-/// <summary><c>func &lt;ident&gt; ( &lt;params&gt; ) (: &lt;type&gt;)? do &lt;stmts&gt; end</c></summary>
+/// <summary>
+/// <c>func &lt;ident&gt; ( &lt;params&gt; ) (: &lt;type&gt;)? do &lt;stmts&gt; end</c>, or
+/// <c>extern func &lt;ident&gt; ( &lt;params&gt; ) (: &lt;type&gt;)? from &lt;string&gt;</c>.
+/// </summary>
 public sealed class FunctionDeclaration(
     string name,
     SourceLocation nameLocation,
     IReadOnlyList<ParameterDeclaration> parameters,
     TypeReference? returnType,
     BlockStatement body,
-    SourceLocation location) : SyntaxNode(location)
+    SourceLocation location,
+    string? externTarget = null,
+    SourceLocation? externTargetLocation = null) : SyntaxNode(location)
 {
     public string Name { get; } = name;
 
@@ -64,7 +69,20 @@ public sealed class FunctionDeclaration(
     /// <summary>The declared return type, or <see langword="null"/> for a function that returns nothing.</summary>
     public TypeReference? ReturnType { get; } = returnType;
 
+    /// <summary>The body, which for an extern function is an empty block.</summary>
     public BlockStatement Body { get; } = body;
+
+    /// <summary>
+    /// The .NET method an extern function is bound to, written
+    /// <c>"Namespace.Type.Method"</c>, or <see langword="null"/> for a function
+    /// declared in the program.
+    /// </summary>
+    public string? ExternTarget { get; } = externTarget;
+
+    /// <summary>The extent of the target string, where binding errors are reported.</summary>
+    public SourceLocation? ExternTargetLocation { get; } = externTargetLocation;
+
+    public bool IsExtern => ExternTarget is not null;
 }
 
 // ---------------------------------------------------------------- statements

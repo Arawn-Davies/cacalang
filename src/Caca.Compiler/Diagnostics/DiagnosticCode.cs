@@ -31,4 +31,7 @@ public enum DiagnosticCode
     NotAllPathsReturn = 19,
     NoValueProduced = 20,
     FloatOutOfRange = 21,
+    ExternTargetInvalid = 22,
+    ExternTargetNotFound = 23,
+    ExternReturnTypeMismatch = 24,
 }

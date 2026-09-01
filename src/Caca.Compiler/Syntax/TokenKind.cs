@@ -30,6 +30,7 @@ public enum TokenKind
     FalseKeyword,
     FuncKeyword,
     ReturnKeyword,
+    ExternKeyword,
 
     // Punctuation and operators
     Plus,
@@ -83,6 +84,7 @@ public static class TokenKindExtensions
         TokenKind.FalseKeyword => "'false'",
         TokenKind.FuncKeyword => "'func'",
         TokenKind.ReturnKeyword => "'return'",
+        TokenKind.ExternKeyword => "'extern'",
         TokenKind.Plus => "'+'",
         TokenKind.Minus => "'-'",
         TokenKind.Star => "'*'",

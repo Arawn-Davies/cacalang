@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A C# library the tests compile .caca programs against, to prove that
+       extern functions can bind to an assembly passed with - -ref. -->
+
+</Project>

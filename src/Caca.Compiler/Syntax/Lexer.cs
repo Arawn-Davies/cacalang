@@ -35,6 +35,9 @@ public sealed class Lexer
         ["false"] = TokenKind.FalseKeyword,
         ["func"] = TokenKind.FuncKeyword,
         ["return"] = TokenKind.ReturnKeyword,
+        // `from` is deliberately not here: it is contextual, recognized only
+        // inside an extern declaration, so programs may keep using it as a name.
+        ["extern"] = TokenKind.ExternKeyword,
     };
 
     private readonly string _text;

@@ -172,6 +172,61 @@ Parameters are passed by value: assigning to one inside a function does not
 touch the caller's variable. **There are no globals** — a function sees its own
 parameters and locals and nothing else.
 
+## Calling .NET
+
+`extern func` declares a function whose body is a .NET method, named by its
+namespace-qualified type and method:
+
+```
+extern func sqrt(x: float): float from "System.Math.Sqrt";
+extern func max(a: int, b: int): int from "System.Math.Max";
+
+print sqrt(2.0);
+print max(3, 7);
+```
+
+The declared signature picks the overload: the compiler looks for a public
+static method whose parameters are exactly the declared ones, with `int` as
+`Int32`, `float` as `Double`, `string` as `String` and `bool` as `Boolean`. A
+declaration with no return type binds to a method returning `void`. A target
+that does not resolve is a compile-time error, not a runtime one.
+
+When no static method matches, the compiler looks for an **instance** method,
+taking the first declared parameter as the receiver. That is what makes the
+`System.String` methods callable:
+
+```
+extern func substring(s: string, start: int, count: int): string from "System.String.Substring";
+extern func index_of(s: string, part: string): int from "System.String.IndexOf";
+extern func length(s: string): int from "System.String.get_Length";
+
+print substring("hello", 1, 3);   // ell
+print index_of("hello", "ll");    // 2
+print length("hello");            // 5
+```
+
+A property is reached through its getter method, as `get_Length` above shows.
+Instance binding works on reference types only: a value-type receiver would
+need its address rather than its value, and nothing worth calling needs it.
+
+An extern call behaves like any other call: arguments are checked, an int
+widens to a float parameter, and a void one can only be a statement. What the
+method throws becomes a runtime error naming the function, the same way
+dividing by zero does. One honesty note: a .NET method can return a null
+string — `System.Environment.GetEnvironmentVariable` does for an unset name —
+and the language has no null. Such a value prints as an empty line and
+concatenates as nothing, but it is not equal to `""`, and handing it to an
+extern instance method as the receiver is a runtime error.
+
+Targets resolve against the core library and the .NET runtime's own
+assemblies — which covers `System.Math`, `System.String`,
+`System.Environment`, `System.IO.Directory` and the rest of the BCL — and
+against any assembly passed to the CLI with [`--ref`](cli.md), which is how a
+program calls your own C# code. `from` is recognized only in this position
+rather than reserved, so a variable named `from` still works.
+[`samples/shell.caca`](../samples/shell.caca) is a small command shell built
+this way, and [`samples/interop`](../samples/interop) binds to a C# library.
+
 ## Input and output
 
 `print` writes a value and a newline. `read_int`, `read_float` and `read_string`
