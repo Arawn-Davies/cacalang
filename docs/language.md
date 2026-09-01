@@ -214,16 +214,18 @@ widens to a float parameter, and a void one can only be a statement. What the
 method throws becomes a runtime error naming the function, the same way
 dividing by zero does. One honesty note: a .NET method can return a null
 string — `System.Environment.GetEnvironmentVariable` does for an unset name —
-and the language has no null, so such a value mostly behaves as an empty
-string but is not equal to `""`.
+and the language has no null. Such a value prints as an empty line and
+concatenates as nothing, but it is not equal to `""`, and handing it to an
+extern instance method as the receiver is a runtime error.
 
-Targets resolve against the core library and anything else loaded into the
-compiler — which covers `System.Math`, `System.String`, `System.Environment`,
-`System.IO.Directory` and the rest of the BCL — and against any assembly
-passed to the CLI with [`--ref`](cli.md), which is how a program calls your
-own C# code. [`samples/shell.caca`](../samples/shell.caca) is a small command
-shell built this way, and [`samples/interop`](../samples/interop) binds to a
-C# library.
+Targets resolve against the core library and the .NET runtime's own
+assemblies — which covers `System.Math`, `System.String`,
+`System.Environment`, `System.IO.Directory` and the rest of the BCL — and
+against any assembly passed to the CLI with [`--ref`](cli.md), which is how a
+program calls your own C# code. `from` is recognized only in this position
+rather than reserved, so a variable named `from` still works.
+[`samples/shell.caca`](../samples/shell.caca) is a small command shell built
+this way, and [`samples/interop`](../samples/interop) binds to a C# library.
 
 ## Input and output
 

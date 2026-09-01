@@ -138,7 +138,19 @@ public sealed class Parser
         // An extern function has no body; it names the .NET method it binds to.
         if (isExtern)
         {
-            Expect(TokenKind.FromKeyword, "before the extern target");
+            // `from` is contextual rather than reserved, so that programs may
+            // still use it as an ordinary name.
+            if (Current is { Kind: TokenKind.Identifier, Text: "from" })
+            {
+                Advance();
+            }
+            else
+            {
+                _diagnostics.Report(
+                    DiagnosticCode.UnexpectedToken,
+                    Current.Location,
+                    $"expected 'from' before the extern target, but found {Current}");
+            }
             var target = Expect(TokenKind.StringLiteral, "naming the .NET method, like \"System.Math.Sqrt\"");
 
             return new FunctionDeclaration(

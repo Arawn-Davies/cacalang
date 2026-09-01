@@ -238,7 +238,7 @@ public sealed class TypeChecker
         }
 
         var parameterTypes = parameters.Select(p => p.Type.ToClrType()).ToArray();
-        var method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static, parameterTypes);
+        var method = FindMethod(type, methodName, BindingFlags.Static, parameterTypes);
 
         // An instance method is callable when the first declared parameter is
         // the receiver, so `substring(s: string, start: int)` finds
@@ -246,7 +246,7 @@ public sealed class TypeChecker
         if (method is null && parameterTypes.Length > 0
             && parameterTypes[0] == type && !type.IsValueType)
         {
-            method = type.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance, parameterTypes[1..]);
+            method = FindMethod(type, methodName, BindingFlags.Instance, parameterTypes[1..]);
         }
 
         if (method is null)
@@ -273,9 +273,42 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Finds a type by its namespace-qualified name: in the referenced
-    /// assemblies first, then the core library, then whatever else is loaded.
+    /// Finds a public method whose parameter types are exactly the requested
+    /// ones.
     /// </summary>
+    /// <remarks>
+    /// <see cref="Type.GetMethod(string, BindingFlags, Type[])"/> is not used
+    /// because its binder accepts implicit widenings, so an <c>int</c>
+    /// declaration would bind to a <c>double</c> parameter — which the
+    /// interpreter would quietly convert and the emitter would not, handing
+    /// the method an integer's bits as a float.
+    /// </remarks>
+    private static MethodInfo? FindMethod(Type type, string name, BindingFlags kind, Type[] parameterTypes)
+    {
+        var method = type.GetMethod(name, BindingFlags.Public | kind, parameterTypes);
+
+        if (method is null)
+        {
+            return null;
+        }
+
+        return method.GetParameters().Select(p => p.ParameterType).SequenceEqual(parameterTypes)
+            ? method
+            : null;
+    }
+
+    /// <summary>
+    /// Finds a type by its namespace-qualified name: in the referenced
+    /// assemblies first, then the core library, then the .NET runtime's own
+    /// assemblies.
+    /// </summary>
+    /// <remarks>
+    /// The fallback is limited to assemblies that live in the runtime's
+    /// directory. Scanning everything loaded into the compiling process would
+    /// let a target bind to the compiler's own assemblies — or a test
+    /// runner's — which the compiled program then references but is never
+    /// given a copy of.
+    /// </remarks>
     private Type? FindType(string name)
     {
         foreach (var assembly in _referencedAssemblies)
@@ -286,16 +319,36 @@ public sealed class TypeChecker
             }
         }
 
-        if (Type.GetType(name) is { } fromCore)
+        // Not Type.GetType, which searches the calling assembly first — that
+        // would resolve the compiler's own types. The core library lookup
+        // still follows type forwards.
+        if (typeof(object).Assembly.GetType(name) is { } fromCore)
         {
             return fromCore;
         }
 
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location);
+
+        if (string.IsNullOrEmpty(runtimeDirectory))
+        {
+            return null;
+        }
+
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            if (!assembly.IsDynamic && assembly.GetType(name) is { } fromLoaded)
+            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location))
             {
-                return fromLoaded;
+                continue;
+            }
+
+            if (!Path.GetDirectoryName(assembly.Location)!.Equals(runtimeDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (assembly.GetType(name) is { } fromRuntime)
+            {
+                return fromRuntime;
             }
         }
 

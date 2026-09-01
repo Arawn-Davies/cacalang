@@ -425,6 +425,7 @@ public class EmitterTests : IDisposable
     [InlineData("extern func max(a: int, b: int): int from \"System.Math.Max\"; print max(2, 9) + max(1, 3);", "")]
     [InlineData("extern func trim(s: string): string from \"System.String.Trim\"; var line = \"\"; read_string line; print trim(line) + \"!\";", "  hey  \n")]
     [InlineData("var s = \"\"; read_string s; print s + \"!\";", "")]
+    [InlineData("extern func env(name: string): string from \"System.Environment.GetEnvironmentVariable\"; print env(\"CACA_TEST_UNSET_VARIABLE_XYZ\"); print \"done\";", "")]
     public void Both_backends_produce_the_same_output(string source, string input)
     {
         Assert.Equal(TestHost.Run(source, input), Emit(source, input));

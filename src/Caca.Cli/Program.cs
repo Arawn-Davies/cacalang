@@ -185,18 +185,20 @@ internal static class Program
         // on every platform. The assembly beside it must be a .dll.
         outputPath ??= Path.ChangeExtension(Path.GetFileName(positional[0]), ".exe");
 
-        // A referenced assembly is copied beside the output, so their names
-        // must differ — compared without case, because on a case-insensitive
-        // file system the copy would silently overwrite the program.
+        // Every referenced assembly is copied beside the output, so no name
+        // may repeat: not the program's, and not another reference's. Compared
+        // without case, because on a case-insensitive file system the copy
+        // would silently overwrite the other file.
         var assemblyName = Path.GetFileName(Path.ChangeExtension(outputPath, ".dll"));
+        var takenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { assemblyName };
 
         foreach (var reference in referencePaths)
         {
-            if (string.Equals(Path.GetFileName(reference), assemblyName, StringComparison.OrdinalIgnoreCase))
+            if (!takenNames.Add(Path.GetFileName(reference)))
             {
                 Console.Error.WriteLine(
-                    $"error: the program and the referenced assembly would both be named " +
-                    $"'{assemblyName}'; pick a different output name with -o");
+                    $"error: two of the files written beside the output would both be named " +
+                    $"'{Path.GetFileName(reference)}'; rename the output with -o, or the clashing assembly");
                 return ExitUsageError;
             }
         }
@@ -220,7 +222,10 @@ internal static class Program
                 Path.GetDirectoryName(Path.GetFullPath(result.AssemblyPath))!,
                 Path.GetFileName(reference));
 
-            if (Path.GetFullPath(reference) != destination)
+            // Compared without case: on a case-insensitive file system a
+            // differently-spelled path can still be the destination itself,
+            // and copying a file onto itself throws.
+            if (!string.Equals(Path.GetFullPath(reference), destination, StringComparison.OrdinalIgnoreCase))
             {
                 File.Copy(reference, destination, overwrite: true);
                 Console.WriteLine($"Copied {Path.GetFileName(reference)} beside it so the program can load it");

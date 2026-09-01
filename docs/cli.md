@@ -80,10 +80,11 @@ caca run samples/interop/interop.caca --ref samples/interop/bin/Debug/net10.0/In
 ```
 
 `caca build` copies each referenced assembly beside the output, because that is
-where the compiled program's references are resolved from. The output therefore
-cannot share a referenced assembly's name — not even by letter case, since on a
-case-insensitive file system the copy would overwrite the program — and the
-build refuses the combination rather than writing one file over the other.
+where the compiled program's references are resolved from. No two of the files
+written there may share a name — not the program's and a reference's, and not
+two references' — not even by letter case, since on a case-insensitive file
+system the copy would overwrite the other file. The build refuses the
+combination rather than writing one file over another.
 
 The language server resolves extern targets against the core library and the
 compiler's own process only, so an extern bound to a `--ref` assembly shows

@@ -82,6 +82,75 @@ public class ExternTests
     }
 
     [Fact]
+    public void Extern_overload_must_match_exactly_not_by_widening()
+    {
+        // Math.Sqrt takes a double. Reflection's default binder would accept
+        // this declaration by implicitly widening the int, which the emitter
+        // cannot honour: it would hand the method an integer's bits as a float.
+        TestHost.SingleError(
+            """extern func sqrt(x: int): float from "System.Math.Sqrt";""",
+            DiagnosticCode.ExternTargetNotFound);
+    }
+
+    [Fact]
+    public void Extern_null_return_prints_as_an_empty_line()
+    {
+        // GetEnvironmentVariable returns null for an unset name; the language
+        // has no null, and printing it writes an empty line, as the emitted
+        // program's Console.WriteLine does.
+        Assert.Equal(TestHost.Lines("", "done"), TestHost.Run("""
+            extern func env(name: string): string from "System.Environment.GetEnvironmentVariable";
+            print env("CACA_TEST_UNSET_VARIABLE_XYZ");
+            print "done";
+            """));
+    }
+
+    [Fact]
+    public void Extern_null_return_is_not_the_empty_string()
+    {
+        Assert.Equal(TestHost.Lines("false"), TestHost.Run("""
+            extern func env(name: string): string from "System.Environment.GetEnvironmentVariable";
+            print env("CACA_TEST_UNSET_VARIABLE_XYZ") == "";
+            """));
+    }
+
+    [Fact]
+    public void Extern_instance_call_on_a_null_receiver_is_a_runtime_error()
+    {
+        var compilation = Compilation.Create("""
+            extern func env(name: string): string from "System.Environment.GetEnvironmentVariable";
+            extern func length(s: string): int from "System.String.get_Length";
+            print length(env("CACA_TEST_UNSET_VARIABLE_XYZ"));
+            """);
+
+        Assert.True(compilation.Succeeded, string.Join(Environment.NewLine, compilation.FormatDiagnostics()));
+        var exception = Assert.Throws<Runtime.CacaRuntimeException>(
+            () => compilation.Run(new StringReader(string.Empty), new StringWriter()));
+
+        Assert.Contains("null", exception.Message);
+    }
+
+    [Fact]
+    public void From_remains_usable_as_an_identifier()
+    {
+        // `from` is contextual, recognized only inside an extern declaration,
+        // so declaring it did not take the name away from existing programs.
+        Assert.Equal(TestHost.Lines("3"), TestHost.Run("var from = 1; print from + 2;"));
+    }
+
+    [Fact]
+    public void Extern_does_not_bind_to_assemblies_outside_the_runtime()
+    {
+        // FloatFormat is public in the compiler's own assembly, which is
+        // loaded into this process. Resolution must not see it without an
+        // explicit reference: the emitted program would reference an assembly
+        // it is never given a copy of.
+        TestHost.SingleError(
+            """extern func fmt(x: float): string from "Caca.Runtime.FloatFormat.ToText";""",
+            DiagnosticCode.ExternTargetNotFound);
+    }
+
+    [Fact]
     public void Extern_target_without_a_type_is_invalid()
     {
         var error = TestHost.SingleError(

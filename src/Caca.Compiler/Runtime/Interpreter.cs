@@ -365,7 +365,11 @@ public sealed class Interpreter
                 result = method.Invoke(receiver, arguments[1..]);
             }
 
-            return result ?? Nothing;
+            // Only a void method's absent result becomes the sentinel. A null
+            // returned by a string method stays null, which prints as an empty
+            // line — exactly what the emitted program's Console.WriteLine does
+            // with it. Substituting the sentinel there made printing it crash.
+            return method.ReturnType == typeof(void) ? Nothing : result!;
         }
         catch (TargetInvocationException exception)
         {
