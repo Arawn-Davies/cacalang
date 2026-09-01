@@ -86,9 +86,12 @@ two references' — not even by letter case, since on a case-insensitive file
 system the copy would overwrite the other file. The build refuses the
 combination rather than writing one file over another.
 
-The language server resolves extern targets against the core library and the
-compiler's own process only, so an extern bound to a `--ref` assembly shows
-`CACA0023` in the editor while still building fine at the command line.
+The editor's counterpart of `--ref` is the `cacalang.references` setting: a
+list of assembly paths, `${workspaceFolder}` allowed, that the language server
+resolves extern targets against. This repository's committed settings already
+point it at the Interop sample library. The setting is read when the server
+starts, so reload the window after changing it or after building a listed
+assembly for the first time.
 
 ## Debugging a compiled program
 

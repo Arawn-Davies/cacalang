@@ -19,7 +19,7 @@ Its [README](../editors/vscode/README.md) has the install steps; in short:
 ```sh
 dotnet publish src/Caca.LanguageServer -c Release -o artifacts/langserver
 cd editors/vscode && npm install && npx @vscode/vsce package
-code --install-extension cacalang-0.1.0.vsix
+code --install-extension cacalang-0.2.0.vsix
 ```
 
 The repository's `.vscode` folder is set up to match: settings pointing at that

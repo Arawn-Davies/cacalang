@@ -50,6 +50,13 @@ function activate(context) {
         synchronize: {
             fileEvents: workspace.createFileSystemWatcher('**/*.caca'),
         },
+        initializationOptions: {
+            // Assemblies extern functions may bind to, matching the command
+            // line's --ref. Read once at startup: reload the window after
+            // changing the setting or building a listed assembly.
+            references: (workspace.getConfiguration('cacalang').get('references') || [])
+                .map((reference) => reference.replace(/\$\{workspaceFolder\}/g, workspaceRoot())),
+        },
     };
 
     client = new LanguageClient('cacalang', 'cacalang', serverOptions, clientOptions);
@@ -75,17 +82,20 @@ function activate(context) {
  * installed under the user's home directory, so it fails to start in exactly
  * the setup where an editor is most likely to launch it.
  */
+/** The first workspace folder, which ${workspaceFolder} in settings expands to. */
+function workspaceRoot() {
+    return workspace.workspaceFolders && workspace.workspaceFolders.length > 0
+        ? workspace.workspaceFolders[0].uri.fsPath
+        : '';
+}
+
 function resolveServer() {
     const fs = require('fs');
     const path = require('path');
     const os = require('os');
 
     const configured = workspace.getConfiguration('cacalang').get('server.path');
-    const root = workspace.workspaceFolders && workspace.workspaceFolders.length > 0
-        ? workspace.workspaceFolders[0].uri.fsPath
-        : '';
-
-    const expanded = (configured || '').replace(/\$\{workspaceFolder\}/g, root);
+    const expanded = (configured || '').replace(/\$\{workspaceFolder\}/g, workspaceRoot());
     const env = dotnetRoot() ? { DOTNET_ROOT: dotnetRoot() } : {};
 
     if (expanded.length === 0) {

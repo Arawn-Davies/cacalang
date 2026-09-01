@@ -21,7 +21,7 @@ is part of this repository.
    cd editors/vscode
    npm install
    npx @vscode/vsce package
-   code --install-extension cacalang-0.1.0.vsix
+   code --install-extension cacalang-0.2.0.vsix
    ```
 
    Or, to try it without packaging, open this folder in VS Code and press F5 to
@@ -31,6 +31,11 @@ is part of this repository.
 `${workspaceFolder}/artifacts/langserver/caca-langserver.dll`, so nothing needs
 to be on your `PATH` beyond `dotnet` itself. Setting it to an empty string
 falls back to `caca-langserver` from `PATH`.
+
+`cacalang.references` lists .NET assemblies extern functions may bind to — the
+editor counterpart of the CLI's `--ref`. `${workspaceFolder}` is expanded, and
+the list is read when the server starts, so reload the window after changing
+it or after building a listed assembly for the first time.
 
 ### Why the server is run through `dotnet`
 

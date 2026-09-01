@@ -2,7 +2,7 @@
   "name": "cacalang",
   "displayName": "cacalang",
   "description": "Language support for cacalang: live errors, hover types, go to definition.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "cacalang",
   "license": "MIT",
   "repository": {
@@ -48,6 +48,14 @@
           "type": "string",
           "default": "",
           "description": "Path to the caca-langserver executable. Leave empty to use 'caca-langserver' from PATH."
+        },
+        "cacalang.references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Paths to .NET assemblies extern functions may bind to, as passed to the CLI with --ref. ${workspaceFolder} is expanded. Read at startup: reload the window after changing this or building a listed assembly."
         }
       }
     },

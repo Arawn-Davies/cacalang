@@ -1,3 +1,4 @@
+using System.Reflection;
 using Caca.Binding;
 
 namespace Caca.LanguageServer;
@@ -15,9 +16,15 @@ public sealed class DocumentStore
 {
     private readonly Dictionary<string, Document> _documents = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Assemblies extern targets resolve against, from the editor's
+    /// <c>cacalang.references</c> setting — the counterpart of <c>--ref</c>.
+    /// </summary>
+    public IReadOnlyList<Assembly> References { get; set; } = [];
+
     public Document Update(string uri, string text)
     {
-        var document = new Document(uri, text, Compilation.Create(text, uri));
+        var document = new Document(uri, text, Compilation.Create(text, uri, References));
         _documents[uri] = document;
         return document;
     }

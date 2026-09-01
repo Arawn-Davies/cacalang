@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Caca.Binding;
 using Caca.LanguageServer.Protocol;
@@ -47,6 +48,7 @@ public sealed class LanguageServer(JsonRpcConnection connection)
         switch (method)
         {
             case "initialize":
+                LoadReferences(parameters?["initializationOptions"]?["references"] as JsonArray);
                 await _connection.SendResponseAsync(id, InitializeResult());
                 return;
 
@@ -98,6 +100,45 @@ public sealed class LanguageServer(JsonRpcConnection connection)
 
                 return;
         }
+    }
+
+    /// <summary>
+    /// Loads the assemblies the client asks for, so extern targets resolve to
+    /// the same methods the command line's <c>--ref</c> would find.
+    /// </summary>
+    /// <remarks>
+    /// A path that cannot be loaded — not built yet, not an assembly — is
+    /// simply not available to bind against, and the extern that needs it
+    /// reports its ordinary diagnostic. An editor session must keep working
+    /// either way.
+    /// </remarks>
+    private void LoadReferences(JsonArray? paths)
+    {
+        if (paths is null)
+        {
+            return;
+        }
+
+        var assemblies = new List<Assembly>();
+
+        foreach (var path in paths)
+        {
+            if ((string?)path is not { Length: > 0 } file)
+            {
+                continue;
+            }
+
+            try
+            {
+                assemblies.Add(Assembly.LoadFrom(Path.GetFullPath(file)));
+            }
+            catch (Exception exception) when (exception is IOException or BadImageFormatException
+                or FileLoadException or UnauthorizedAccessException or ArgumentException)
+            {
+            }
+        }
+
+        _documents.References = assemblies;
     }
 
     private static JsonObject InitializeResult() => new()
