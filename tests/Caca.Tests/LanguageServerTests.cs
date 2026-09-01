@@ -116,6 +116,48 @@ public class LanguageServerTests
     }
 
     [Fact]
+    public async Task Initialize_references_let_extern_targets_resolve()
+    {
+        // The editor's cacalang.references setting arrives as initialization
+        // options, the language server counterpart of the CLI's --ref.
+        var initialize = Request(1, "initialize", new JsonObject
+        {
+            ["initializationOptions"] = new JsonObject
+            {
+                ["references"] = new JsonArray(
+                    Path.Combine(AppContext.BaseDirectory, "Caca.ReferenceLibrary.dll")),
+            },
+        });
+
+        var program = """
+            extern func greet(name: string): string from "Caca.ReferenceLibrary.Greetings.Greet";
+            print greet("editor");
+            """;
+
+        var messages = await ConverseAsync(initialize, DidOpen(program));
+        var diagnostics = Notification(messages, "textDocument/publishDiagnostics")["params"]?["diagnostics"];
+
+        Assert.Empty(Assert.IsType<JsonArray>(diagnostics));
+    }
+
+    [Fact]
+    public async Task Initialize_references_that_cannot_load_are_ignored()
+    {
+        var initialize = Request(1, "initialize", new JsonObject
+        {
+            ["initializationOptions"] = new JsonObject
+            {
+                ["references"] = new JsonArray("/no/such/assembly.dll"),
+            },
+        });
+
+        var messages = await ConverseAsync(initialize, DidOpen("""print "still working";"""));
+        var diagnostics = Notification(messages, "textDocument/publishDiagnostics")["params"]?["diagnostics"];
+
+        Assert.Empty(Assert.IsType<JsonArray>(diagnostics));
+    }
+
+    [Fact]
     public async Task Opening_a_valid_document_publishes_no_errors()
     {
         var messages = await ConverseAsync(DidOpen("""print "hello";"""));

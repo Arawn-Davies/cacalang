@@ -1,5 +1,8 @@
 {
   "cacalang.server.path": "${workspaceFolder}/artifacts/langserver/caca-langserver.dll",
+  "cacalang.references": [
+    "${workspaceFolder}/samples/interop/bin/Debug/net10.0/Interop.dll"
+  ],
   "files.associations": {
     "*.caca": "caca"
   }

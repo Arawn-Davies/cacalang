@@ -1,6 +1,6 @@
 namespace Interop;
 
-/// <summary>What interop.caca calls into.</summary>
+/// <summary>What hello.caca calls into.</summary>
 public static class Hello
 {
     public static void SayHello() => Console.WriteLine("Hello, World from C#!");
