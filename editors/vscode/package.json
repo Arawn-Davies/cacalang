@@ -4,6 +4,12 @@
   "description": "Language support for cacalang: live errors, hover types, go to definition.",
   "version": "0.1.0",
   "publisher": "cacalang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Arawn-Davies/cacalang.git",
+    "directory": "editors/vscode"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
