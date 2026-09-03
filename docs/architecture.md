@@ -112,6 +112,14 @@ round-trip text — digits found by rounding to 1..17 significant places until
 one reads back as the same value, laid out with .NET's fixed-versus-scientific
 thresholds.
 
+`CRuntime.cs` holds two implementations of the same `caca_*` contract: a
+hosted one built on libc, and a freestanding one that is not — a PS/2
+keyboard driver, a VGA text buffer, a serial port, and a bump allocator,
+built without an operating system beneath any of it. [`boot/`](../boot/README.md)
+turns a `--target c-freestanding` file into a GRUB-bootable ISO and boots it
+in QEMU, headless or in a window. Floats and extern functions are not part of
+that runtime yet; see `boot/README.md`.
+
 ## The backends must agree
 
 Every language feature is implemented in each backend, and a set of parity

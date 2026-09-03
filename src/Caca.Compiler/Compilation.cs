@@ -116,11 +116,11 @@ public sealed class Compilation
     /// The diagnostics; the file is only written when there are none.
     /// </returns>
     /// <exception cref="InvalidOperationException">The program did not compile.</exception>
-    public IReadOnlyList<Diagnostic> EmitC(string outputPath)
+    public IReadOnlyList<Diagnostic> EmitC(string outputPath, bool freestanding = false)
     {
         EnsureSucceeded();
 
-        var diagnostics = CEmitter.Emit(Program, Functions, out var text);
+        var diagnostics = CEmitter.Emit(Program, Functions, out var text, freestanding);
 
         if (diagnostics.Count == 0)
         {

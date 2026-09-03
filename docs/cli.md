@@ -83,10 +83,13 @@ cc primes.c -o primes
 The output behaves identically to the other backends — the parity tests hold
 it to that. Extern functions are the exception: they are .NET methods, and a
 program compiled to C has no .NET to call, so the build reports `CACA0025`
-for each one. This target is the first step towards running cacalang without
-an operating system underneath it; the generated code reaches the world only
-through a small runtime at the top of the file, written so a freestanding
-replacement can slot in.
+for each one.
+
+`--target c-freestanding` writes the same program against a runtime with no
+libc underneath it instead — one that prints to a VGA text buffer and a
+serial port and reads a keyboard through the PS/2 controller — which
+[`boot/`](../boot/README.md) turns into a GRUB-bootable ISO and boots in
+QEMU, with no operating system involved at any point.
 
 ## Referencing a C# assembly
 

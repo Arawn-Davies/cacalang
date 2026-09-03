@@ -181,9 +181,10 @@ internal static class Program
 
                 target = rest[++i];
 
-                if (target is not ("il" or "c"))
+                if (target is not ("il" or "c" or "c-freestanding"))
                 {
-                    Console.Error.WriteLine($"error: unknown target '{target}'; the targets are 'il' and 'c'");
+                    Console.Error.WriteLine(
+                        $"error: unknown target '{target}'; the targets are 'il', 'c' and 'c-freestanding'");
                     return ExitUsageError;
                 }
             }
@@ -198,9 +199,9 @@ internal static class Program
             return status;
         }
 
-        if (target is "c")
+        if (target is "c" or "c-freestanding")
         {
-            return BuildC(compilation, positional[0], outputPath);
+            return BuildC(compilation, positional[0], outputPath, freestanding: target is "c-freestanding");
         }
 
         // The runnable file keeps the .exe name the language has always used,
@@ -276,10 +277,10 @@ internal static class Program
     }
 
     /// <summary>Writes the program as a C file instead of an assembly.</summary>
-    private static int BuildC(Compilation compilation, string sourcePath, string? outputPath)
+    private static int BuildC(Compilation compilation, string sourcePath, string? outputPath, bool freestanding)
     {
         outputPath ??= Path.ChangeExtension(Path.GetFileName(sourcePath), ".c");
-        var diagnostics = compilation.EmitC(outputPath);
+        var diagnostics = compilation.EmitC(outputPath, freestanding);
 
         if (diagnostics.Count > 0)
         {
@@ -295,7 +296,9 @@ internal static class Program
 
         var name = Path.GetFileNameWithoutExtension(outputPath);
         Console.WriteLine($"Compiled {compilation.FileName} to {outputPath}");
-        Console.WriteLine($"Build it with: cc {outputPath} -o {name}");
+        Console.WriteLine(freestanding
+            ? $"Boot it with: boot/run-qemu.sh {outputPath}"
+            : $"Build it with: cc {outputPath} -o {name}");
         return ExitSuccess;
     }
 
