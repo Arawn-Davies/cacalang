@@ -109,6 +109,27 @@ public sealed class Compilation
             : new EmitResult(assemblyPath, configPath, null, warning);
     }
 
+    /// <summary>
+    /// Compiles the program to a single, self-contained C file.
+    /// </summary>
+    /// <returns>
+    /// The diagnostics; the file is only written when there are none.
+    /// </returns>
+    /// <exception cref="InvalidOperationException">The program did not compile.</exception>
+    public IReadOnlyList<Diagnostic> EmitC(string outputPath)
+    {
+        EnsureSucceeded();
+
+        var diagnostics = CEmitter.Emit(Program, Functions, out var text);
+
+        if (diagnostics.Count == 0)
+        {
+            File.WriteAllText(outputPath, text);
+        }
+
+        return diagnostics;
+    }
+
     /// <summary>Formats every diagnostic, one per line, for display.</summary>
     public IEnumerable<string> FormatDiagnostics() => Diagnostics.Select(d => d.Format(FileName));
 

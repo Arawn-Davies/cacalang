@@ -69,6 +69,25 @@ The runnable file is named `.exe` on every platform, Linux and macOS included,
 so that the name is the same everywhere. The assembly beside it has to be a
 `.dll`, so the two cannot share one.
 
+## Compiling to C
+
+`--target c` writes the program as one self-contained C file instead of an
+assembly, buildable with any C compiler and dependent on nothing else:
+
+```sh
+caca build samples/primes.caca --target c -o primes.c
+cc primes.c -o primes
+./primes
+```
+
+The output behaves identically to the other backends — the parity tests hold
+it to that. Extern functions are the exception: they are .NET methods, and a
+program compiled to C has no .NET to call, so the build reports `CACA0025`
+for each one. This target is the first step towards running cacalang without
+an operating system underneath it; the generated code reaches the world only
+through a small runtime at the top of the file, written so a freestanding
+replacement can slot in.
+
 ## Referencing a C# assembly
 
 `--ref` names a .NET assembly that [`extern func`](language.md#calling-net)

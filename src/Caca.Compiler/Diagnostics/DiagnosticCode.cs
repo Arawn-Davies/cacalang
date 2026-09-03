@@ -34,4 +34,5 @@ public enum DiagnosticCode
     ExternTargetInvalid = 22,
     ExternTargetNotFound = 23,
     ExternReturnTypeMismatch = 24,
+    ExternNotAvailableInC = 25,
 }

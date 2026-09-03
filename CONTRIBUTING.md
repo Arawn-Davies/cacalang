@@ -12,7 +12,7 @@ errors.
 
 ## Adding a language feature
 
-A feature is not done until it exists in both backends. The usual path, in
+A feature is not done until it exists in every backend. The usual path, in
 order:
 
 1. **A token**, if the feature needs new syntax — `Syntax/TokenKind.cs` and
@@ -23,19 +23,22 @@ order:
    `Diagnostics/DiagnosticCode.cs` entry for anything it can reject. Add codes
    at the end; they appear in editor output and in `docs/diagnostics.md`.
 4. **The interpreter**, in `Runtime/Interpreter.cs`.
-5. **The emitter**, in `Emit/IlEmitter.cs` — including a sequence point if the
-   feature is a statement a debugger should stop on.
-6. **Tests**: the behaviour through the interpreter, the errors it can produce,
-   and the same programs through the emitter.
-7. **Documentation**: [`docs/grammar.md`](docs/grammar.md) and
+5. **The IL emitter**, in `Emit/IlEmitter.cs` — including a sequence point if
+   the feature is a statement a debugger should stop on.
+6. **The C emitter**, in `Emit/CEmitter.cs`, and its runtime in
+   `Emit/CRuntime.cs` if the feature needs the outside world.
+7. **Tests**: the behaviour through the interpreter, the errors it can produce,
+   and the same programs through the emitters.
+8. **Documentation**: [`docs/grammar.md`](docs/grammar.md) and
    [`docs/language.md`](docs/language.md), plus
    [`docs/diagnostics.md`](docs/diagnostics.md) for any new code.
 
 ### The parity rule
 
-The interpreter and the emitted assembly must produce identical output for every
-program. `EmitterTests.Both_backends_produce_the_same_output` is where that is
-asserted; add cases to it.
+Every backend must produce identical output for every program.
+`EmitterTests.Both_backends_produce_the_same_output` asserts it for the IL
+backend and `CEmitterTests.C_backend_matches_the_interpreter` for the C one;
+add cases to both.
 
 If a rule cannot be expressed in emitted IL — formatting a float, for instance —
 generate a method into the assembly rather than letting the two drift apart.
