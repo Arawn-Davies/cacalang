@@ -72,8 +72,17 @@ Two things a `.caca` program can do elsewhere are not available here yet:
 
 ## A known limitation
 
-Piped input to `run-qemu.sh` can still race the kernel's boot: bytes that
-arrive at the emulated UART before the kernel starts polling it are dropped,
-since there is no interrupt-driven buffering yet, only polling. A script
-piping input should give the boot a moment first. This does not affect the
-GUI script, whose input comes from a live keyboard rather than a pipe.
+Piped input to `run-qemu.sh` can lose bytes in a short window right after
+boot: the serial port is read by polling a one-byte holding register, with
+no FIFO enabled and nothing buffering it in between, so characters that
+arrive close together before the kernel settles can overwrite one another
+before anything reads them. In practice a run's first line or two can be
+lost this way while everything after it, arriving at the same pace once the
+kernel is idle in its main loop, comes through cleanly. A several-second
+delay before the first real input — comfortably longer than GRUB and the
+kernel's own startup take — is enough in testing; `samples/toolkit.caca`'s
+own test script uses ten seconds. This does not affect the GUI
+script, whose input comes from a live keyboard rather than a pipe, or a
+program's `print` output, which is unaffected either way. Enabling the
+16550's FIFO, or moving to interrupt-driven input, would close this; it
+has not been done yet.

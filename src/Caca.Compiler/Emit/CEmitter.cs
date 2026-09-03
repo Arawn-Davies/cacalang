@@ -254,7 +254,7 @@ public sealed class CEmitter
                 break;
 
             case WhileStatement loop:
-                Line($"while ({Emit(loop.Condition)})");
+                Line($"while {EmitCondition(loop.Condition)}");
                 Line("{");
                 _indent++;
 
@@ -300,7 +300,7 @@ public sealed class CEmitter
 
     private void EmitIf(IfStatement conditional)
     {
-        Line($"if ({Emit(conditional.Condition)})");
+        Line($"if {EmitCondition(conditional.Condition)}");
         Line("{");
         _indent++;
         EmitStatement(conditional.ThenBranch);
@@ -400,6 +400,53 @@ public sealed class CEmitter
         return expression.ConvertedTo == CacaType.Float && expression.Type == CacaType.Int
             ? $"(double){text}"
             : text;
+    }
+
+    /// <summary>
+    /// Renders a condition wrapped in exactly one pair of parentheses, for
+    /// <c>if</c> and <c>while</c>.
+    /// </summary>
+    /// <remarks>
+    /// Every binary expression already parenthesizes itself, on purpose:
+    /// nothing here works out real operator precedence, so an expression
+    /// re-embedded in a larger one needs its own grouping every time. Adding
+    /// this condition's parentheses on top of that, unconditionally, would
+    /// double them for the common case of a bare comparison — <c>if (n == 0)</c>
+    /// becoming <c>if ((n == 0))</c> — which is valid C, but is exactly the
+    /// shape <c>-Wparentheses-equality</c> warns about, reading as a typo for
+    /// assignment.
+    /// </remarks>
+    private string EmitCondition(Expression condition)
+    {
+        var text = Emit(condition);
+        return IsFullyParenthesized(text) ? text : $"({text})";
+    }
+
+    /// <summary>Whether an expression's rendered text is already exactly one parenthesized group.</summary>
+    private static bool IsFullyParenthesized(string text)
+    {
+        if (text.Length < 2 || text[0] != '(' || text[^1] != ')')
+        {
+            return false;
+        }
+
+        var depth = 0;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '(')
+            {
+                depth++;
+            }
+            else if (text[i] == ')' && --depth == 0)
+            {
+                // The opening paren closed before the end of the text, as in
+                // "(a)+(b)": two groups, not one wrapping the whole thing.
+                return i == text.Length - 1;
+            }
+        }
+
+        return false;
     }
 
     private string EmitCore(Expression expression) => expression switch

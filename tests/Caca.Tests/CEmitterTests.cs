@@ -205,6 +205,15 @@ public class CEmitterTests : IDisposable
         Assert.Contains("'not a number' is not an integer", run.Error);
     }
 
+    [CcFact]
+    public void C_backend_matches_the_interpreter_on_the_toolkit_sample()
+    {
+        var source = File.ReadAllText(TestHost.SamplePath("toolkit.caca"));
+        Assert.Equal(
+            TestHost.Run(source, SampleTests.ToolkitSession),
+            EmitC(source, SampleTests.ToolkitSession));
+    }
+
     [Fact]
     public void C_target_rejects_extern_functions()
     {
