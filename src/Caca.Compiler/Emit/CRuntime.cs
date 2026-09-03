@@ -23,12 +23,34 @@ public static class CRuntime
         #include <stdlib.h>
         #include <string.h>
 
+        #ifdef _WIN32
+        #include <fcntl.h>
+        #include <io.h>
+        #endif
+
         /* A string: a length and bytes, immutable once made. The length is
            carried rather than found with strlen so that embedded zero bytes
            survive, as they do in the other backends. Allocations are never
            freed: programs in this language are small and short-lived, and the
            freestanding runtime will use a bump allocator with the same rule. */
         typedef struct { int32_t length; const char *data; } caca_str;
+
+        /* On Windows, stdio in its default text mode rewrites every '\n'
+           written out as "\r\n", and strips a '\r' from what comes in on
+           stdin — a Windows CRT convention neither this language nor the
+           other two backends share. Binary mode turns that off, so a byte
+           written or read here is the byte on the wire, matching macOS,
+           Linux, and the interpreter and IL backends on every platform,
+           without this program needing to know it is on Windows at all.
+           _setmode has no counterpart outside the Windows CRT, so the whole
+           thing compiles away to nothing elsewhere. */
+        static void caca_init_io(void) {
+        #ifdef _WIN32
+            _setmode(_fileno(stdout), _O_BINARY);
+            _setmode(_fileno(stderr), _O_BINARY);
+            _setmode(_fileno(stdin), _O_BINARY);
+        #endif
+        }
 
         /* A runtime error stops the program the way the interpreter does:
            one readable line, and a failing exit code. */

@@ -132,6 +132,14 @@ public sealed class CEmitter
         Line("{");
         _indent++;
 
+        // Only main needs this, and only in the hosted runtime: it puts
+        // stdio into binary mode, which matters only on Windows and only
+        // before anything is written or read.
+        if (declaration is null && !_freestanding)
+        {
+            Line("caca_init_io();");
+        }
+
         var locals = new List<(string Name, CacaType Type)>();
         CollectLocals(body, locals);
 
