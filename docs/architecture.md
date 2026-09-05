@@ -95,12 +95,38 @@ One method is generated into every assembly: the float formatter. A compiled
 program cannot call into the compiler, and the interpreter and the compiled
 program have to print `1.0` the same way, so the rule is emitted alongside.
 
-## The two backends must agree
+## The C backend
 
-Every language feature is implemented twice, and a set of parity tests runs the
-same program through both and compares the output. This is the single most
-useful class of test in the project: it is what catches an emitter that produces
-IL the runtime rejects, or that quietly computes something different.
+`Emit/CEmitter.cs` renders the same type-checked tree as a single,
+self-contained C file, built with any C compiler: `caca build --target c`.
+Generated code touches the world only through the `caca_` runtime functions
+emitted at the top of the file (`Emit/CRuntime.cs`), so a freestanding
+runtime — one that boots without an operating system — only has to supply that
+contract, not libc. Extern functions are .NET methods, so this target rejects
+them.
+
+The fiddly parts are the ones .NET otherwise does quietly: int arithmetic is
+carried out on the unsigned representation because signed overflow is
+undefined behaviour in C, and the float formatter reproduces .NET's shortest
+round-trip text — digits found by rounding to 1..17 significant places until
+one reads back as the same value, laid out with .NET's fixed-versus-scientific
+thresholds.
+
+`CRuntime.cs` holds two implementations of the same `caca_*` contract: a
+hosted one built on libc, and a freestanding one that is not — a PS/2
+keyboard driver, a VGA text buffer, a serial port, and a bump allocator,
+built without an operating system beneath any of it. [`boot/`](../boot/README.md)
+turns a `--target c-freestanding` file into a GRUB-bootable ISO and boots it
+in QEMU, headless or in a window. Floats and extern functions are not part of
+that runtime yet; see `boot/README.md`.
+
+## The backends must agree
+
+Every language feature is implemented in each backend, and a set of parity
+tests runs the same program through all of them and compares the output. This
+is the single most useful class of test in the project: it is what catches an
+emitter that produces IL the runtime rejects, or C a compiler refuses, or that
+quietly computes something different.
 
 ## Language server
 
@@ -122,6 +148,7 @@ few dozen lines, and this project is meant to be read.
 | Type checker | `src/Caca.Compiler/Binding/TypeChecker.cs` |
 | Interpreter | `src/Caca.Compiler/Runtime/Interpreter.cs` |
 | IL emitter, and the symbols it writes | `src/Caca.Compiler/Emit/IlEmitter.cs` |
+| C emitter and its runtime | `src/Caca.Compiler/Emit/CEmitter.cs`, `Emit/CRuntime.cs` |
 | The native launcher | `src/Caca.Compiler/Emit/AppHost.cs` |
 | Language server | `src/Caca.LanguageServer/` |
 
@@ -133,7 +160,7 @@ few dozen lines, and this project is meant to be read.
 | `src/Caca.Compiler/Binding` | Types, symbols, the type checker |
 | `src/Caca.Compiler/Diagnostics` | Locations, codes, the bag |
 | `src/Caca.Compiler/Runtime` | The interpreter |
-| `src/Caca.Compiler/Emit` | The IL emitter and the apphost writer |
+| `src/Caca.Compiler/Emit` | The IL and C emitters, and the apphost writer |
 | `src/Caca.LanguageServer` | LSP server and protocol |
 | `src/Caca.Cli` | The `caca` command and the REPL |
 | `editors/vscode` | The VS Code extension |

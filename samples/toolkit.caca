@@ -1,0 +1,205 @@
+// A small toolkit of number-theory commands: recursion, mutual recursion,
+// nested control flow and function composition, using nothing beyond the
+// language itself — no extern, no floats — so this runs identically through
+// the interpreter, --target c, and --target c-freestanding. Boot it with no
+// operating system at all: see boot/README.md.
+
+func factorial(n: int): int do
+    if n <= 1 then return 1; end;
+    return n * factorial(n - 1);
+end
+
+func fib(n: int): int do
+    if n < 2 then return n; end;
+    return fib(n - 1) + fib(n - 2);
+end
+
+func gcd(a: int, b: int): int do
+    if b == 0 then return a; end;
+    return gcd(b, a % b);
+end
+
+func power(base: int, exponent: int): int do
+    var result = 1;
+    for i = 1 to exponent do
+        result = result * base;
+    end;
+    return result;
+end
+
+// Reused by both "reverse" and "palindrome" below.
+func reverseNumber(n: int): int do
+    var negative = false;
+    if n < 0 then
+        negative = true;
+        n = -n;
+    end;
+
+    var result = 0;
+    while n > 0 do
+        result = result * 10 + n % 10;
+        n = n / 10;
+    end;
+
+    if negative then return -result; end;
+    return result;
+end
+
+func digitSum(n: int): int do
+    if n < 0 then n = -n; end;
+
+    var sum = 0;
+    while n > 0 do
+        sum = sum + n % 10;
+        n = n / 10;
+    end;
+    return sum;
+end
+
+// Mutual recursion: each is declared after the other calls it, which works
+// because a function may be called from anywhere in the file. Non-negative
+// n only — each call strips one off, so a negative one never reaches zero.
+func isEven(n: int): bool do
+    if n == 0 then return true; end;
+    return isOdd(n - 1);
+end
+
+func isOdd(n: int): bool do
+    if n == 0 then return false; end;
+    return isEven(n - 1);
+end
+
+func printCollatz(n: int) do
+    print n;
+    var steps = 0;
+
+    // Bounded rather than "while n != 1": a bug that left n unchanged would
+    // otherwise hang the program instead of failing loudly.
+    for i = 1 to 1000 do
+        if n == 1 then break; end;
+
+        if n % 2 == 0 then
+            n = n / 2;
+        else
+            n = n * 3 + 1;
+        end;
+
+        steps = steps + 1;
+        print n;
+    end;
+
+    print "steps: " + steps;
+end
+
+func printEvensUpTo(n: int) do
+    for i = 1 to n do
+        if i % 2 != 0 then continue; end;
+        print i;
+    end;
+end
+
+func playGuess() do
+    var target = 42;
+    print "guess a number from 1 to 100";
+
+    while true do
+        var guess = 0;
+        read_int guess;
+
+        if guess == target then
+            print "correct!";
+            break;
+        else if guess < target then
+            print "higher";
+        else
+            print "lower";
+        end;
+    end;
+end
+
+func printHelp() do
+    print "commands:";
+    print "  factorial   n!, recursively";
+    print "  fib         the nth Fibonacci number, recursively";
+    print "  gcd         greatest common divisor of two numbers, recursively";
+    print "  power       base to the exponent, iteratively";
+    print "  reverse     a number with its digits reversed";
+    print "  palindrome  whether a number reads the same reversed";
+    print "  digitsum    the sum of a number's decimal digits";
+    print "  parity      even or odd, by mutual recursion";
+    print "  evens       every even number up to n";
+    print "  collatz     the Collatz sequence from n down to 1";
+    print "  guess       a higher-or-lower guessing game";
+    print "  help        this list";
+    print "  exit        leave the toolkit";
+end
+
+print "cacalang toolkit - type 'help' for commands, 'exit' to leave";
+
+var running = true;
+while running do
+    print "> ";
+
+    var command = "";
+    read_string command;
+
+    // Declared once here, unconditionally, and reused by whichever branch
+    // below needs them: the top level has one flat scope, so a fresh 'var n'
+    // repeated inside two different branches would be a duplicate
+    // declaration rather than two independent locals.
+    var n = 0;
+    var a = 0;
+    var b = 0;
+
+    if command == "exit" then
+        running = false;
+    else if command == "help" then
+        printHelp();
+    else if command == "factorial" then
+        read_int n;
+        print factorial(n);
+    else if command == "fib" then
+        read_int n;
+        print fib(n);
+    else if command == "gcd" then
+        read_int a;
+        read_int b;
+        print gcd(a, b);
+    else if command == "power" then
+        read_int a;
+        read_int b;
+        print power(a, b);
+    else if command == "reverse" then
+        read_int n;
+        print reverseNumber(n);
+    else if command == "palindrome" then
+        read_int n;
+        if n == reverseNumber(n) then
+            print "palindrome";
+        else
+            print "not palindrome";
+        end;
+    else if command == "digitsum" then
+        read_int n;
+        print digitSum(n);
+    else if command == "parity" then
+        read_int n;
+        if isEven(n) then
+            print "even";
+        else
+            print "odd";
+        end;
+    else if command == "evens" then
+        read_int n;
+        printEvensUpTo(n);
+    else if command == "collatz" then
+        read_int n;
+        printCollatz(n);
+    else if command == "guess" then
+        playGuess();
+    else if command != "" then
+        print "unknown command '" + command + "'; type 'help'";
+    end;
+end;
+
+print "bye";

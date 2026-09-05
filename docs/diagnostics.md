@@ -55,6 +55,7 @@ These come from what the program means.
 | `CACA0022` | An extern target that does not name a method: it must be `"Namespace.Type.Method"`. |
 | `CACA0023` | An extern target that does not resolve: the type was not found, or it has no public method with that name and the declared parameter types. |
 | `CACA0024` | An extern target whose method returns a different type than the declaration. |
+| `CACA0025` | An extern function in a program compiled with `--target c`, which has no .NET to call. |
 
 `CACA0019` is decided by asking whether a statement returns on every path: a
 `return` does, a block does if any statement in it does, and an `if` does if it

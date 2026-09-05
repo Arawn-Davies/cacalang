@@ -146,6 +146,7 @@ internal static class Program
         }
 
         string? outputPath = null;
+        string? target = null;
         var withLauncher = true;
         var withDebugInfo = true;
         var positional = new List<string>();
@@ -170,6 +171,23 @@ internal static class Program
 
                 outputPath = rest[++i];
             }
+            else if (rest[i] is "-t" or "--target")
+            {
+                if (i + 1 >= rest.Length)
+                {
+                    Console.Error.WriteLine("error: '--target' requires 'il' or 'c'");
+                    return ExitUsageError;
+                }
+
+                target = rest[++i];
+
+                if (target is not ("il" or "c" or "c-freestanding"))
+                {
+                    Console.Error.WriteLine(
+                        $"error: unknown target '{target}'; the targets are 'il', 'c' and 'c-freestanding'");
+                    return ExitUsageError;
+                }
+            }
             else
             {
                 positional.Add(rest[i]);
@@ -179,6 +197,11 @@ internal static class Program
         if (!TryCompile([.. positional], referencePaths, out var compilation, out var status))
         {
             return status;
+        }
+
+        if (target is "c" or "c-freestanding")
+        {
+            return BuildC(compilation, positional[0], outputPath, freestanding: target is "c-freestanding");
         }
 
         // The runnable file keeps the .exe name the language has always used,
@@ -250,6 +273,32 @@ internal static class Program
             Console.WriteLine($"Run it with: dotnet {result.AssemblyPath}");
         }
 
+        return ExitSuccess;
+    }
+
+    /// <summary>Writes the program as a C file instead of an assembly.</summary>
+    private static int BuildC(Compilation compilation, string sourcePath, string? outputPath, bool freestanding)
+    {
+        outputPath ??= Path.ChangeExtension(Path.GetFileName(sourcePath), ".c");
+        var diagnostics = compilation.EmitC(outputPath, freestanding);
+
+        if (diagnostics.Count > 0)
+        {
+            foreach (var diagnostic in diagnostics)
+            {
+                Console.Error.WriteLine(diagnostic.Format(compilation.FileName));
+            }
+
+            var count = diagnostics.Count;
+            Console.Error.WriteLine($"{count} error{(count == 1 ? string.Empty : "s")}.");
+            return ExitCompileError;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(outputPath);
+        Console.WriteLine($"Compiled {compilation.FileName} to {outputPath}");
+        Console.WriteLine(freestanding
+            ? $"Boot it with: boot/run-qemu.sh {outputPath}"
+            : $"Build it with: cc {outputPath} -o {name}");
         return ExitSuccess;
     }
 
@@ -357,6 +406,8 @@ internal static class Program
 
             Options:
               -o, --output <path>   Where to write the executable (default: <file>.exe)
+              -t, --target <name>   What 'build' produces: 'il' (default), a .NET
+                                    assembly, or 'c', a self-contained C file
               -r, --ref <path>      A .NET assembly extern functions may bind to;
                                     repeat for more than one
                   --no-launcher     Emit only the assembly, to be run with 'dotnet'
